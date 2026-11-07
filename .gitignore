@@ -1,0 +1,26 @@
+# Entorno local de Python
+.venv/
+
+# Archivos generados por Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Compilación
+build/
+dist/
+
+# Configuración local y credenciales
+.env
+.env.*
+!.env.example
+
+# Datos locales: versionar solo marcadores, nunca capturas ni galerías
+/datos/originales/*
+!/datos/originales/.gitkeep
+/datos/procesados/*
+!/datos/procesados/.gitkeep
+/datos/particiones/*
+!/datos/particiones/.gitkeep
+/datos/enrolamientos/*
+!/datos/enrolamientos/.gitkeep
