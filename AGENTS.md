@@ -11,6 +11,7 @@ Este archivo es un índice: cargar las guías relevantes según el trabajo, sin 
 | Datos y enrolamiento | Ver la sección específica de datos y enrolamiento de este archivo |
 | IA y experimentos | [Investigación de IA](Agents/investigacion-ia.md), [evaluación de IA](docs/evaluacion-ia.md) |
 | Motores, sensores y firmware | [Hardware y seguridad](Agents/hardware-y-seguridad.md), [componentes](hardware/componentes.md) |
+| Ramas, commits y colaboración | [Guía de Git y ramas](Agents/git-y-ramas.md), propuesta para revisión del equipo |
 | Verificar o entregar | [Pruebas](Agents/pruebas.md), [protocolo preliminar](docs/validacion/protocolo-preliminar.md) |
 
 Las guías son específicas de este repositorio. No instalar herramientas, configurar otros repositorios ni activar delegación por el mero hecho de leerlas. El pedido del usuario y los acuerdos de alcance gobiernan el trabajo.

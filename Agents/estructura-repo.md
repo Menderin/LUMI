@@ -128,3 +128,7 @@ docs/construccion-dataset.md  # Diseño del proceso y guía para implementación
 ~~~
 
 datos/ se conserva como espacio de trabajo local: únicamente README y .gitkeep se versionan. Las herramientas sí se versionan en software/percepcion/dataset/. En directorios con archivos útiles retirar .gitkeep; mantenerlo únicamente donde no hay contenido. Una carpeta con subdirectorios que ya se conservan tampoco necesita marcador propio.
+
+## Colaboración con Git
+
+Agents/git-y-ramas.md explica ramas, commits, pull requests, versiones y recuperación de errores para el equipo y los agentes. El flujo main más ramas de tarea es una propuesta para revisión; no configura protecciones ni crea ramas.
