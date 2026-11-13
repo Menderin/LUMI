@@ -63,3 +63,11 @@ Primera implementación sugerida, pendiente de pedido de código: capturar una s
 ## Evidencia para dar por preparada una versión del dataset
 
 Verificar trazabilidad de recortes a originales, metadatos de geometría, cobertura de vistas y negativos, etiquetas revisadas, particiones sin cruces de secuencia y configuración reproducible. Registrar conteos por persona/sesión/vista y motivos de descarte. No declarar representatividad ni métricas de precisión sin datos observados. Volumen mínimo y protocolo final quedan para revisión del equipo.
+
+## Piloto acordado
+
+Capturar 4–6 participantes con consentimiento. Registrar geometría y comprobar encuadre a 1,2, 1,5 y 1,8 m. Separar enrolamiento, calibración y evaluación por sesión. Registrar un giro continuo pausado de 10 s en interior y otro en exterior. Capturar recorridos nominales interior→interior y exterior→exterior, transiciones en ambas direcciones, cruces, oclusiones, escena vacía y distractores solos. Mantener ropa por bloque. Anotar a 2 Hz y exhaustivamente en ventanas críticas.
+
+Empezar con un RGB fijo. Si se dispone de estéreo sincronizado, guardar ambos originales, tiempos, calibración y rectificación. Para profundidad, registrar unidades y alineación. Usar el mismo identificador de par en el manifiesto.
+
+El [validador](../software/percepcion/dataset/manifiesto.py) lee JSON con una clave `secuencias`. Cada entrada requiere `id`, `sesion`, `split`, `origen` y `video` relativo al manifiesto. Los derivados deben repetir el ID de origen. Añadir `par_estereo` si corresponde. Para ejecutar evaluación, incluir `escenario`, `objetivo` y `frames`, un mapa de números de fotograma (base cero) a listas de objetos con `id` y `bbox` XYXY en píxeles. Una lista vacía indica ausencia observada. Una clave omitida indica fotograma sin anotar. Mantener geometría y metadatos adicionales junto a cada entrada.

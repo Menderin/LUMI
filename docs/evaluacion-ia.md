@@ -39,3 +39,60 @@ No elegir el mejor número sobre los mismos datos usados para ajustar. El costo 
 ## Dependencia de datos propios
 
 Antes de comparar identificadores, ejecutar el piloto de captura definido en [construcción del dataset](construccion-dataset.md). Verificar que el detector funciona desde el ángulo bajo y que los recortes tienen calidad suficiente. Separar galería de enrolamiento y secuencias de evaluación; ninguna colección está disponible todavía.
+
+## Ejecución del banco offline
+
+Desde la raíz, instalar las dependencias en el entorno local y validar el manifiesto.
+
+~~~sh
+python -m pip install -r software/percepcion/requirements.txt
+python -m software.percepcion.dataset.manifiesto datos/particiones/piloto.json
+python -m software.percepcion.experimentos datos/particiones/piloto.json datos/particiones/config.json datos/procesados/corrida-01 --split calibracion
+~~~
+
+Configuración JSON de ejemplo (rutas relativas al manifiesto y umbral ilustrativo, no calibrado):
+
+~~~json
+{"metodo":"histograma","galeria":["../enrolamientos/muestra.png"],"umbral":0.2,"margen":0.02,"asociacion":false,"hilos":1}
+~~~
+
+Métodos: histograma HSV 16×8 por región con Bhattacharyya; euclidea y mahalanobis con PCA de hasta 8 componentes y alto 128 o 64; reid con encoder OSNet x0.25 ONNX y alto 256 o 128. Re-ID requiere ruta `encoder` y exportación que devuelva el embedding. El detector opcional requiere `detector` con `archivo`, `lado` y `confianza`. Admite exportaciones YOLO ONNX con NMS y salida 1×N×6 (XYXY en píxeles, confianza, clase; persona=0), entrada RGB cuadrada en [0,1] con relleno inferior y derecho. Verificar el contrato de cada exportación. Sin detector se usan cajas anotadas. El modo manual sirve para aislar identificación; comparar asociación temporal sobre vídeo con detección.
+
+Primero comparar dos pesos compatibles y revisar recuperación a IoU 0,5, falsos positivos y p95. Luego repetir identificadores con galería monoluz y mixta, máximo 12 recortes. Usar una corrida por usuario/galería. Ajustar umbral en calibración por cero falsas aceptaciones observadas y máxima recuperación. Congelar antes de evaluar. Una sustitución en cruce, oclusión o transición descarta la configuración. Ordenar candidatas por peor tasa de acierto entre escenarios, p95 y RAM. Revisar JSONL para recuperación y sustituciones por secuencia. Repetir tres veces por plataforma con mismo vídeo y configuración, registrar pesos y condiciones térmicas. El banco no elige automáticamente ni reemplaza la validación física.
+
+Autoencoder condicional: si fallan los candidatos y existen datos independientes, entrenar offline con RTX A5000, RGB 128×64 y 64×32, latente 32, L1 y parada temprana. Comparar latentes por coseno y reportar reconstrucción aparte. No hay entrenamiento ejecutado ni selección final.
+
+## Batería en el servidor
+
+Instalar las dependencias del ejecutor en el entorno Python del servidor. Preparar un JSON local en `datos/particiones/` con las configuraciones que se quieren comparar. Cada entrada apunta a un JSON del ejecutor individual, relativo a la matriz. Las rutas de vídeos, pesos y galerías de cada configuración siguen siendo relativas al manifiesto.
+
+~~~json
+{"corridas":[
+  {"id":"hsv-interior","config":"hsv-interior.json"},
+  {"id":"pca-euclidea-interior","config":"pca-euclidea-interior.json"},
+  {"id":"pca-mahalanobis-interior","config":"pca-mahalanobis-interior.json"},
+  {"id":"osnet-interior","config":"osnet-interior.json"}
+]}
+~~~
+
+Desde la raíz del repositorio en Linux:
+
+~~~sh
+python -m pip install -r software/percepcion/requirements.txt
+bash herramientas/ejecutar-bateria.sh datos/particiones/piloto.json datos/particiones/matriz.json --equipo servidor --split calibracion --repeticiones 3
+~~~
+
+También se puede usar `python -m software.percepcion.bateria` con los mismos argumentos. Para evaluación usar otra matriz con las configuraciones ya congeladas y `--split evaluacion`. Incluir entradas separadas por usuario, iluminación, detector y asociación según el plan. El lanzador ejecuta la matriz indicada en CPU, de forma secuencial. La calibración de umbrales y el entrenamiento condicional se realizan aparte.
+
+Cada lanzamiento imprime su carpeta bajo `datos/procesados/baterias/`, excluida de Git. Allí quedan `bateria.json` con la configuración usada, `indice.csv` para comparar corridas, un log por intento y, para las corridas completas, `resumen.json`, `corrida.json` y `frames.jsonl`. Si una corrida falla, el resto continúa y el comando devuelve un código distinto de cero. Compartir solo resultados agregados revisados.
+
+## Vista previa
+
+En un entorno con escritorio, instalar las dependencias y sustituir la variante sin GUI en ese entorno Python:
+
+~~~sh
+python -m pip uninstall -y opencv-python-headless
+python -m pip install opencv-python
+~~~
+
+Añadir `--vista-previa` al comando de la batería o de una corrida individual. La ventana muestra el vídeo grabado del manifiesto, los candidatos en ámbar y el objetivo seleccionado en verde. Pulsar Q o Esc para cerrar la vista sin interrumpir la corrida actual. En modo manual se muestran los recuadros anotados. La reproducción sigue el ritmo del procesamiento. Ejecutar los benchmarks sin vista previa para evitar que el dibujo y la ventana afecten los FPS y el uso de CPU.

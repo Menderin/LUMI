@@ -49,3 +49,11 @@ ROS 2 Jazzy con Ubuntu 24.04 de 64 bits es una combinación candidata con paquet
 ## Adquisición de datos y enrolamiento
 
 Las herramientas offline de captura y preparación se ubican en software/percepcion/dataset/; el módulo operativo de registro del usuario, en software/percepcion/enrolamiento/. Comparten trazabilidad y preprocesamiento cuando se implementen, pero el constructor de datasets no debe convertirse en dependencia obligatoria de cada arranque. Datos y galerías se almacenan localmente en datos/. Ver [protocolo de captura](construccion-dataset.md).
+
+## Botón, enrolamiento y LED
+
+El módulo `software/percepcion/enrolamiento/estado.py` recibe tiempo monotónico, flanco del botón, número de personas, recorte validado, confirmación de cobertura y coincidencia vigente. Emite permiso lógico de seguimiento y salidas verde/rojo/ámbar. El permiso no es un comando de motor.
+
+Desde espera, pulsar inicia 10 s de giro pausado a 1,5 m. Ámbar fijo durante captura. Aceptar una sola persona, hasta 12 recortes separados por 0,8 s. El mínimo provisional es 8, configurable tras el piloto. El operador confirma las cuatro vistas. Tras fallo, ámbar intermitente y reintento por pulsación, hasta cinco intentos. Tras éxito, tres destellos verdes de 250 ms separados por 250 ms y luego apagado. Pulsar con coincidencia válida inicia seguimiento, verde fijo. Pérdida o ambigüedad corta permiso y enciende rojo. Recuperar identidad no rearma sin pulsación. Al iniciar una nueva sesión, crear un estado nuevo.
+
+GPIO, antirrebote, validación de calidad de recortes y caducidad de detección corresponden al adaptador físico pendiente. Verificar patrones con motores deshabilitados antes de integrar control.

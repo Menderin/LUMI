@@ -9,6 +9,7 @@ Este archivo es un índice: cargar las guías relevantes según el trabajo, sin 
 | Requisitos y prioridades | [Gestión y alcance](Agents/gestion-y-alcance.md), [alcance](docs/alcance.md) |
 | Código e interfaces | [Desarrollo](Agents/desarrollo.md), [arquitectura](docs/arquitectura.md), [decisiones](docs/decisiones.md) |
 | Datos y enrolamiento | Ver la sección específica de datos y enrolamiento de este archivo |
+| Plan de percepción acordado | [Dataset, experimentos y estados del robot](docs/plan-percepcion.md) |
 | IA y experimentos | [Investigación de IA](Agents/investigacion-ia.md), [evaluación de IA](docs/evaluacion-ia.md) |
 | Motores, sensores y firmware | [Hardware y seguridad](Agents/hardware-y-seguridad.md), [componentes](hardware/componentes.md) |
 | Ramas, commits y colaboración | [Guía de Git y ramas](Agents/git-y-ramas.md), propuesta para revisión del equipo |
