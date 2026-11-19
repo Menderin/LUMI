@@ -16,10 +16,17 @@ El equipo describe un chasis metálico, cuatro ruedas y cuatro motores DC, agrup
 
 ## Estado y lectura
 
-- Estructura y documentación: presentes; aplicación, firmware y resultados experimentales: aún no implementados en esta base.
-- Raspberry Pi 5 de 4 GB, sin acelerador dedicado de IA, o mini PC i3: plataformas candidatas. Modelo exacto, alimentación y rendimiento pendientes.
+- Hay código de experimentos, app Android, puente ROS y firmware de banco Wi-Fi/USB. Compilación/arranque y algunas pruebas lógicas están registradas; percepción operativa, integración ROS en Raspberry y movimiento físico estable no están validados. Leer docs/trabajo/banco-wifi-motores.md para la evidencia actual.
+- Cambio confirmado por usuario el 2026-11-19 por presupuesto: Raspberry Pi 3 Model B, 1 GB RAM. Sustituye Pi 5/NUC como equipo previsto. Preparar Ubuntu Server 24.04 arm64 + ROS 2 Jazzy ros-base según docs/instalacion.md; rendimiento completo de IA pendiente de medición.
 - Python para IA es la orientación del usuario; C/C++ para firmware y componentes de control, propuesta por concretar.
 - Cámara obligatoria; sensores y controlador pendientes. ROS 2 es la preferencia de integración.
 - Enrolamiento mediante botón y giro de la persona: interacción propuesta, no comportamiento ya validado.
 
 Consultar [alcance](../docs/alcance.md) para métricas y [fuentes](../docs/fuentes-y-pendientes.md) para contradicciones. No convertir recomendaciones técnicas en decisiones aprobadas.
+
+## Decisiones vigentes
+
+Consultar docs/decisiones.md, docs/plan-arquitectura-raspberry-esp.md y docs/video-ros-pi3.md. La ruta actual es Ubuntu Server por consola/SSH, ROS 2 Jazzy ros-base y una captura de cámara compartida. GUI opcional. El modo Wi-Fi directo de ESP es temporal para motores; no sustituye la arquitectura con Raspberry. No dar por resuelto un rechazo HTTP ni un problema de potencia porque se haya generado un APK.
+
+
+Banco temporal vigente 0.5.0: el control de la app usa UDP 8082 con ACK y tickets emitidos por ESP; HTTP 8080 es para estado. No estimar reloj de ESP en Android. Firmware cargado con autopruebas correctas y PWM cero; mando del teléfono pendiente de validar. [Contrato V2](../docs/trabajo/banco-protocolo-v2.md).

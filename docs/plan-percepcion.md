@@ -54,3 +54,5 @@ Las dos RTX A5000 están disponibles para entrenamiento offline. El primer bloqu
 ## Punto de partida para continuar
 
 Consultar el [registro de implementación](trabajo/pipeline-percepcion.md) y la rama local feat/pipeline-percepcion. Distinguir el plan de las pruebas realmente ejecutadas. No hay capturas propias ni resultados en Pi 5 o NUC documentados todavía.
+
+Ver también la [propuesta de tratamiento de imágenes](tratamiento-imagenes.md) para el flujo de captura, recorte y comparación.

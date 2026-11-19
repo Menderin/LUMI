@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LUMI · Panel de laboratorio</title>
+<style>
+:root{font:16px system-ui;color-scheme:dark;background:#122021;color:#f4faf8}
+*{box-sizing:border-box}body{margin:0}main{max-width:40rem;margin:auto;padding:1.25rem}
+h1{margin:.25rem 0;font-size:2.25rem}p{line-height:1.5}
+small{color:#bcdbcf}.panel{margin-top:1.5rem;padding:1rem;border:1px solid #55716d;border-radius:1rem}
+.camera{background:#081111;aspect-ratio:16/9;display:grid;place-items:center;overflow:hidden}
+img{width:100%;height:100%;object-fit:contain}img[hidden]{display:none}
+button{width:100%;min-height:3rem;padding:.7rem;border:0;border-radius:.5rem;background:#a7efca;color:#13291f;font:inherit;font-weight:700}
+button:disabled{opacity:.55}button:focus-visible{outline:3px solid white;outline-offset:3px}
+</style>
+<main>
+<header><small>LUMI / LABORATORIO</small><h1>Panel del robot</h1></header>
+<section class="panel" aria-labelledby="camara">
+<h2 id="camara">Cámara</h2><div class="camera"><span id="sin-imagen">Sin señal de cámara</span><img hidden id="foto" alt="Vista actual de la cámara de LUMI"></div>
+</section>
+<section class="panel" aria-labelledby="control">
+<h2 id="control">Enrolamiento de prueba</h2>
+<p>Este banco comprueba la solicitud y el temporizador de 10 segundos. La captura de muestras y el reconocimiento requieren el nodo de percepción.</p>
+<p id="estado" role="status">Conectando…</p>
+<button id="inicio" type="button" disabled>Solicitar enrolamiento</button>
+</section>
+</main>
+<script>
+const estado = document.querySelector('#estado');
+const inicio = document.querySelector('#inicio');
+const foto = document.querySelector('#foto');
+const sinImagen = document.querySelector('#sin-imagen');
+let ocupado = false;
+let mensaje = '';
+function mostrarFoto(disponible) {
+  foto.hidden = !disponible;
+  sinImagen.hidden = disponible;
+}
+foto.onload = () => mostrarFoto(true);
+foto.onerror = () => mostrarFoto(false);
+async function actualizar() {
+  try {
+    const respuesta = await fetch('/api/estado', {cache:'no-store'});
+    if (!respuesta.ok) throw Error();
+    const datos = await respuesta.json();
+    const nombres = {espera:'En espera', enrolando:'Enrolando', fallo:'Captura de prueba finalizada sin muestras'};
+    const leds = datos.leds.map((activo,i) => activo ? ['verde','rojo','ámbar'][i] : '').filter(Boolean);
+    const texto = (nombres[datos.estado] || datos.estado) + ' · Intentos ' + datos.intentos + '/5 · LED: ' + (leds.join(', ') || 'apagado');
+    const lectura = mensaje || texto;
+    if (estado.textContent !== lectura) estado.textContent = lectura;
+    inicio.disabled = ocupado || !['espera','fallo'].includes(datos.estado) || datos.intentos >= 5;
+    if (datos.camara) foto.src = '/foto.jpg?t=' + Date.now();
+    else { foto.removeAttribute('src'); mostrarFoto(false); }
+  } catch {
+    estado.textContent = 'Conexión perdida. Comprueba el Wi-Fi del robot.';
+    inicio.disabled = true;
+    foto.removeAttribute('src');
+    mostrarFoto(false);
+  } finally {
+    setTimeout(actualizar, 350);
+  }
+}
+inicio.onclick = async () => {
+  ocupado = true;
+  inicio.disabled = true;
+  mensaje = '';
+  try {
+    const respuesta = await fetch('/api/enrolamiento', {
+      method:'POST', headers:{'Content-Type':'application/json'}
+    });
+    if (!respuesta.ok) mensaje = (await respuesta.json()).error;
+  } catch {
+    mensaje = 'No se pudo enviar la solicitud.';
+  } finally {
+    ocupado = false;
+  }
+};
+actualizar();
+</script>
+</html>

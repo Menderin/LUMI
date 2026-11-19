@@ -24,3 +24,15 @@ dist/
 !/datos/particiones/.gitkeep
 /datos/enrolamientos/*
 !/datos/enrolamientos/.gitkeep
+
+# Compilación ESP-IDF y PlatformIO
+.pio/
+.sdkconfig.old
+sdkconfig.banco
+managed_components/
+
+sdkconfig
+sdkconfig.old
+sdkconfig.banco.old
+
+sdkconfig.wifi_banco*

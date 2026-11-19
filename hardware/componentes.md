@@ -1,15 +1,15 @@
 # Inventario y diseño físico preliminar
 
-Estado: información declarada por el usuario, sin inspección ni fichas técnicas verificadas.
+Estado actualizado el 2026-11-18. Fotografías aportadas por el usuario, inspección USB local y ficha del L298. Los datos no visibles se mantienen pendientes.
 
 | Elemento | Conocido | Pendiente |
 | --- | --- | --- |
 | Chasis | Estructura metálica de cuatro ruedas propuesta | Dimensiones, masa y montaje |
-| Motores | Cuatro DC, dos por lado | Modelo, reducción, tensión, corriente nominal/bloqueo y encoders |
-| Puentes H | Actuación por lados prevista | Número de módulos/canales, corriente, disipación y protecciones |
-| Computador | Pi 5 4 GB o mini PC i3 candidatos | Modelo, disponibilidad, consumo, refrigeración y SO |
+| Motores | Cuatro DC declarados. Foto de XD-37GB520, 12 V, salida 30 rpm; etiqueta del motor ZYTD520, 12 V, 5000 r/min | Usuario observó 1–4 A a tensión inferior a 12 V frenando la rueda a mano; no es rango nominal ni máximo a 12 V. Fuente de 5 A; caracterizar arranque/carga sin frenado manual. Confirmar que los cuatro son iguales, torque y encoders |
+| Puentes H | Un módulo fotografiado compatible visualmente con L298N, dos canales, disipador y diodos | Leer marcado del integrado y regulador; verificar jumpers, corriente y disipación. Descartado para cuatro motores con los consumos declarados de 1–4 A por motor |
+| Computador | Raspberry Pi 3 Model B fijada por usuario el 2026-11-19 por presupuesto; 1 GB RAM | Preparar Ubuntu Server 24.04 arm64, validar cámara, alimentación, consumo y rendimiento del pipeline |
 | Cámara | Obligatoria para percepción de cuerpo completo | Modelo, interfaz, óptica, posición y FPS |
-| Microcontrolador | Necesario en arquitectura propuesta | Placa y compatibilidad de enlace |
+| Microcontrolador | ESP32-S3 QFN56 rev. 0.2 confirmado por esptool; 240 MHz, flash 16 MB, PSRAM 8 MB. USB Serial/JTAG COM7 en descarga; foto de placa de dos USB con adaptador de bornes | Confirmar revisión exacta del PCB/adaptador y serigrafía; en modo normal anterior enumeraba COM6 VID 303A/PID 4001 |
 | Batería/alimentación | Operación móvil | Química, capacidad, regulación, fusibles y transitorios |
 | Proximidad | Ultrasonido, ToF o IR candidatos | Rango, campo de visión, luz, zonas ciegas y cobertura lateral |
 | Encoders | Recomendados para velocidad realimentada | Disponibilidad, resolución e interfaz |
