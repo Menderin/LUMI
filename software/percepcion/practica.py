@@ -21,8 +21,17 @@ REVISION = "LUMI - Revision (Enter aprueba, R descarta)"
 REPO = Path(__file__).resolve().parents[2]
 
 
+def ventana_visible(nombre):
+    try:
+        return cv2.getWindowProperty(nombre, cv2.WND_PROP_VISIBLE) >= 1
+    except cv2.error:
+        # Qt elimina el receptor al cerrar la ultima ventana.
+        return False
+
+
 class DetectorHOG:
-    def __init__(self):
+    def __init__(self, umbral=.5):
+        self.umbral = umbral
         if not hasattr(cv2, "HOGDescriptor"):
             raise RuntimeError(
                 f"OpenCV {cv2.__version__} no incluye HOGDescriptor. "
@@ -36,7 +45,7 @@ class DetectorHOG:
         if ancho < 64 or alto < 128:
             return []
         rects, pesos = self.hog.detectMultiScale(
-            frame, winStride=(8, 8), padding=(8, 8), scale=1.05, finalThreshold=2,
+            frame, self.umbral, (8, 8), (8, 8), 1.05, 2,
         )
         if len(rects) == 0:
             return []
@@ -138,7 +147,7 @@ def revisar(ruta, muestras):
             tecla = cv2.waitKey(pausa) & 0xff
             if tecla in (10, 13, ord("r"), 27):
                 return tecla
-            if cv2.getWindowProperty(REVISION, cv2.WND_PROP_VISIBLE) < 1:
+            if not ventana_visible(REVISION):
                 return ord("r")
     finally:
         captura.release()
@@ -193,7 +202,7 @@ def resumen(tiempos, segundos):
 
 
 def practica(args, carpeta):
-    detector = DetectorHOG()
+    detector = DetectorHOG(args.hog_umbral)
     captura = abrir_camara(args)
     estado = Enrolamiento()
     identificador = None
@@ -287,7 +296,7 @@ def practica(args, carpeta):
                 cv2.imshow(VENTANA, imagen)
                 tecla = cv2.waitKey(1) & 0xff
                 duracion += time.monotonic() - inicio
-                if tecla == 27 or cv2.getWindowProperty(VENTANA, cv2.WND_PROP_VISIBLE) < 1:
+                if tecla == 27 or not ventana_visible(VENTANA):
                     break
                 if estado.estado == "revision":
                     log_decision = revisar(video_intento, estado.muestras)
@@ -316,8 +325,8 @@ def practica(args, carpeta):
         })
 
 
-def comparar_hog(video, carpeta):
-    detector = DetectorHOG()
+def comparar_hog(video, carpeta, hog_umbral=.5):
+    detector = DetectorHOG(hog_umbral)
     resultados = {}
     for ancho, alto in ((640, 480), (320, 240)):
         captura = cv2.VideoCapture(video)
@@ -350,7 +359,7 @@ def comparar_hog(video, carpeta):
             **resumen(tiempos, time.monotonic() - inicio), "frames_por_numero_de_cajas": detecciones,
         }
     guardar_json(carpeta / "comparacion-hog.json", {
-        "video": video, "commit": commit_local(), "opencv": cv2.__version__,
+        "video": video, "commit": commit_local(), "opencv": cv2.__version__, "hog_umbral": hog_umbral,
         "resultados": resultados,
     })
 
@@ -364,16 +373,18 @@ def main():
     parser.add_argument("--alto", type=int, default=480)
     parser.add_argument("--fps", type=int, default=15)
     parser.add_argument("--umbral", type=float, default=.45, help="Valor provisional para piloto")
+    parser.add_argument("--hog-umbral", type=float, default=.5, help="Umbral SVM HOG, provisional")
     parser.add_argument("--margen", type=float, default=.08, help="Valor provisional para piloto")
     args = parser.parse_args()
-    if (args.camara < 0 or args.ancho < 64 or args.alto < 128 or args.fps < 1
+    if (not math.isfinite(args.hog_umbral) or args.hog_umbral < 0
+            or args.camara < 0 or args.ancho < 64 or args.alto < 128 or args.fps < 1
             or not 0 <= args.umbral <= 1 or not 0 <= args.margen <= 1):
         parser.error("Cámara, resolución, FPS, umbral o margen fuera de rango")
     carpeta = REPO / "datos" / "enrolamientos" / datetime.now().strftime("practica-%Y%m%d-%H%M%S-%f")
     carpeta.mkdir(parents=True, exist_ok=False)
     try:
         if args.video:
-            comparar_hog(args.video, carpeta)
+            comparar_hog(args.video, carpeta, args.hog_umbral)
         else:
             practica(args, carpeta)
     except (RuntimeError, cv2.error, OSError) as error:

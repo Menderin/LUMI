@@ -37,3 +37,11 @@ Usa un entorno aparte del banco sin interfaz, porque los dos paquetes OpenCV com
 - PCA Euclídea, PCA Mahalanobis y redes quedan en la comparación offline. OpenVINO se considera cuando haya un encoder alternativo para medir. El histograma es sensible a ropa similar e iluminación.
 
 Referencia de gestión: [HU de Vicente](https://trello.com/c/zU5nasgb). La verificación con la Logitech en el NUC se registra después de la práctica.
+
+## Ajustes del piloto, 2026-11-20
+
+El usuario verifico captura 640x480 a 15 FPS en la Logitech del NUC. HOG produjo un recuadro sobre una parte del cuerpo, pendiente de verificar contra video original. Se limita OpenCV a >=4.10,<5 y se usa detectMultiScale con argumentos posicionales. El cierre de la ultima ventana Qt se trata como cierre normal al consultar su visibilidad.
+
+Se agrega --hog-umbral, inicialmente 0.5 como parametro experimental SVM. Probar 0, 0.5 y 1.0 sobre el mismo clip con --video y registrar perdidas y recuadros incorrectos. El umbral de identidad --umbral sigue independiente. Subir el umbral HOG puede reducir falsos positivos y aumentar omisiones, sin garantizar corregir el encuadre. Mantener HOG como referencia y comparar un detector ONNX si no encuadra frente, espalda y perfiles. No aprobar galerias que recorten solo extremidades.
+
+Verificacion local con OpenCV 4.14.0 en Windows paso dos pruebas de integracion de revision/recuperacion y grabacion/benchmark en escena vacia. La validacion de cierre Qt y deteccion de cuerpo completo en el NUC sigue pendiente.
