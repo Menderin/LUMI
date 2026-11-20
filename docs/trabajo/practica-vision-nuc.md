@@ -45,3 +45,5 @@ El usuario verifico captura 640x480 a 15 FPS en la Logitech del NUC. HOG produjo
 Se agrega --hog-umbral, inicialmente 0.5 como parametro experimental SVM. Probar 0, 0.5 y 1.0 sobre el mismo clip con --video y registrar perdidas y recuadros incorrectos. El umbral de identidad --umbral sigue independiente. Subir el umbral HOG puede reducir falsos positivos y aumentar omisiones, sin garantizar corregir el encuadre. Mantener HOG como referencia y comparar un detector ONNX si no encuadra frente, espalda y perfiles. No aprobar galerias que recorten solo extremidades.
 
 Verificacion local con OpenCV 4.14.0 en Windows paso dos pruebas de integracion de revision/recuperacion y grabacion/benchmark en escena vacia. La validacion de cierre Qt y deteccion de cuerpo completo en el NUC sigue pendiente.
+
+Perfil OpenVINO CPU e inventario confirmado del NUC en [piloto OpenVINO](openvino-nuc.md).

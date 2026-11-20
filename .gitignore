@@ -37,3 +37,4 @@ sdkconfig.banco.old
 
 sdkconfig.wifi_banco*
 .venv-practica/
+/modelos/pesos/

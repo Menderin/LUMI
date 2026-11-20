@@ -1,0 +1,2 @@
+-r requirements-practica.txt
+openvino>=2024.6,<2027

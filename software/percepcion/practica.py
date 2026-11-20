@@ -12,6 +12,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import psutil
 
 from .enrolamiento.estado import Enrolamiento
 from .experimentos import Identificador, recortar
@@ -185,6 +186,7 @@ def abrir_camara(args):
     if not captura.isOpened():
         captura.release()
         raise RuntimeError(f"No se pudo abrir la cámara {args.camara}")
+    captura.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     for propiedad, valor in ((cv2.CAP_PROP_FRAME_WIDTH, args.ancho),
                              (cv2.CAP_PROP_FRAME_HEIGHT, args.alto),
                              (cv2.CAP_PROP_FPS, args.fps)):
@@ -202,7 +204,15 @@ def resumen(tiempos, segundos):
 
 
 def practica(args, carpeta):
-    detector = DetectorHOG(args.hog_umbral)
+    cv2.setNumThreads(1)
+    if args.detector == "openvino":
+        from .detector_openvino import DetectorOpenVINO, descargar
+        ruta = REPO / "modelos/pesos/person-detection-0202/person-detection-0202.xml"
+        if args.descargar_modelo:
+            descargar(ruta.parent)
+        detector = DetectorOpenVINO(ruta, args.confianza, args.hilos)
+    else:
+        detector = DetectorHOG(args.hog_umbral)
     captura = abrir_camara(args)
     estado = Enrolamiento()
     identificador = None
@@ -213,16 +223,25 @@ def practica(args, carpeta):
     duracion = 0.0
     tiempos = []
     conteos = Counter()
+    proceso = psutil.Process()
+    proceso.cpu_percent()
+    psutil.cpu_percent()
+    recursos = (carpeta / "recursos.csv").open("w", newline="", encoding="utf-8")
+    recursos_log = csv.writer(recursos)
+    recursos_log.writerow(["tiempo_s", "cpu_sistema_pct", "cpu_proceso_pct_total",
+                          "rss_mib", "disponible_mib", "swap_usada_mib", "temperatura_c"])
+    ultimo_recurso = 0.0
     try:
         formato = foto_parametros(captura)
         print(f"Camara: {formato}. Datos locales: {carpeta}", flush=True)
         guardar_json(carpeta / "configuracion.json", {
             **vars(args), "captura": formato, "opencv": cv2.__version__,
             "commit": commit_local(), "sistema": platform.platform(),
-            "detector": "HOG", "identificador": "HSV / Bhattacharyya",
+             "detector": args.detector, "identificador": "HSV / Bhattacharyya",
+            "runtime": getattr(detector, "metadata", {}),
         })
         fps = formato["fps_reportado"]
-        fps = fps if math.isfinite(fps) and fps > 0 else args.fps
+        fps = min(fps if math.isfinite(fps) and fps > 0 else args.fps, args.fps_proceso)
         cv2.namedWindow(VENTANA, cv2.WINDOW_NORMAL)
         with (carpeta / "decisiones.csv").open("w", newline="", encoding="utf-8") as archivo:
             log = csv.writer(archivo)
@@ -231,6 +250,24 @@ def practica(args, carpeta):
             tecla = -1
             while True:
                 inicio = time.monotonic()
+                if inicio - ultimo_recurso >= 1:
+                    memoria = psutil.virtual_memory()
+                    temperaturas = []
+                    try:
+                        swap_usada = psutil.swap_memory().used / 2**20
+                    except (OSError, RuntimeError):
+                        swap_usada = ""
+                    if hasattr(psutil, "sensors_temperatures"):
+                        temperaturas = [t.current for grupo in psutil.sensors_temperatures().values()
+                                        for t in grupo if t.current is not None]
+                    recursos_log.writerow([
+                        inicio, psutil.cpu_percent(), proceso.cpu_percent() / (psutil.cpu_count() or 1),
+                        proceso.memory_info().rss / 2**20, memoria.available / 2**20,
+                        swap_usada,
+                        max(temperaturas) if temperaturas else "",
+                    ])
+                    recursos.flush()
+                    ultimo_recurso = inicio
                 ok, frame = captura.read()
                 if not ok:
                     raise RuntimeError("La cámara dejó de entregar imágenes")
@@ -294,7 +331,8 @@ def practica(args, carpeta):
                         intento.cerrar()
                         intento = None
                 cv2.imshow(VENTANA, imagen)
-                tecla = cv2.waitKey(1) & 0xff
+                espera_ms = max(1, round((1 / args.fps_proceso - (time.monotonic() - inicio)) * 1000))
+                tecla = cv2.waitKey(espera_ms) & 0xff
                 duracion += time.monotonic() - inicio
                 if tecla == 27 or not ventana_visible(VENTANA):
                     break
@@ -316,6 +354,7 @@ def practica(args, carpeta):
                         tecla = -1
     finally:
         captura.release()
+        recursos.close()
         for video in (intento, clip):
             if video is not None:
                 video.cerrar()
@@ -369,6 +408,11 @@ def main():
     entrada = parser.add_mutually_exclusive_group()
     entrada.add_argument("--camara", type=int, default=0, help="Número V4L2 en Linux")
     entrada.add_argument("--video", help="Comparar HOG a dos resoluciones sobre este vídeo")
+    parser.add_argument("--detector", choices=["hog", "openvino"], default="hog")
+    parser.add_argument("--descargar-modelo", action="store_true")
+    parser.add_argument("--hilos", type=int, default=2)
+    parser.add_argument("--fps-proceso", type=float, default=5)
+    parser.add_argument("--confianza", type=float, default=.6)
     parser.add_argument("--ancho", type=int, default=640)
     parser.add_argument("--alto", type=int, default=480)
     parser.add_argument("--fps", type=int, default=15)
@@ -376,7 +420,13 @@ def main():
     parser.add_argument("--hog-umbral", type=float, default=.5, help="Umbral SVM HOG, provisional")
     parser.add_argument("--margen", type=float, default=.08, help="Valor provisional para piloto")
     args = parser.parse_args()
-    if (not math.isfinite(args.hog_umbral) or args.hog_umbral < 0
+    if args.video and args.detector != "hog":
+        parser.error("--video conserva la comparacion HOG; OpenVINO se prueba con --camara")
+    if args.descargar_modelo and args.detector != "openvino":
+        parser.error("--descargar-modelo requiere --detector openvino")
+    if (args.hilos < 1 or not math.isfinite(args.fps_proceso) or not 0 < args.fps_proceso <= 60
+            or not 0 <= args.confianza <= 1
+            or not math.isfinite(args.hog_umbral) or args.hog_umbral < 0
             or args.camara < 0 or args.ancho < 64 or args.alto < 128 or args.fps < 1
             or not 0 <= args.umbral <= 1 or not 0 <= args.margen <= 1):
         parser.error("Cámara, resolución, FPS, umbral o margen fuera de rango")
