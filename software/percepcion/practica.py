@@ -273,7 +273,7 @@ def resumen(tiempos, segundos):
     }
 
 
-def practica(args, carpeta):
+def practica(args, carpeta, guia=None):
     cv2.setNumThreads(1)
     if args.detector == "openvino":
         from .detector_openvino import DetectorOpenVINO, descargar
@@ -359,6 +359,10 @@ def practica(args, carpeta):
                 inicio_detector = time.monotonic()
                 cajas = detectar(frame, detector)
                 detector_ms = (time.monotonic() - inicio_detector) * 1000
+                if guia is not None:
+                    tecla = guia.actualizar(ahora, estado.estado, estado.intentos, clip, tecla)
+                    if guia.terminada or guia.cancelada:
+                        break
                 distancias = []
                 candidato = None
                 motivo = "sin_galeria"
@@ -421,10 +425,17 @@ def practica(args, carpeta):
                             cv2.FONT_HERSHEY_SIMPLEX, .43, (255,255,255), 1)
                 zonas = botones(imagen, [("Enrolar [E]",ord("e")),("Repetir [R]",ord("r")),
                                        ("Cancelar [C]",ord("c")),("Seguir [S]",ord("s")),
-                                       ("Grabar [V]",ord("v"))], max(96,imagen.shape[0]-126))
+                                       ("Paso [N]",ord("n")) if guia is not None else ("Grabar [V]",ord("v"))], max(96,imagen.shape[0]-126))
                 cv2.setMouseCallback(VENTANA,callback_botones(zonas,cola_botones))
                 cv2.putText(imagen, "SIMULACION: " + orden["intencion"], (8, 70),
                             cv2.FONT_HERSHEY_SIMPLEX, .65, (255, 255, 255), 2)
+                if guia is not None:
+                    cv2.rectangle(imagen,(0,100),(imagen.shape[1]-1,152),(20,20,20),-1)
+                    for fila,texto in enumerate(guia.textos(ahora)):
+                        ancho_texto=cv2.getTextSize(texto,cv2.FONT_HERSHEY_SIMPLEX,1,1)[0][0]
+                        escala=min(.55,(imagen.shape[1]-16)/max(1,ancho_texto))
+                        cv2.putText(imagen,texto,(8,120+fila*23),cv2.FONT_HERSHEY_SIMPLEX,
+                                    escala,(255,255,255),1,cv2.LINE_AA)
                 latencia = (time.monotonic() - inicio) * 1000
                 mostrar_rendimiento(imagen, latencia, iteraciones, cpu_sistema, cpu_proceso)
                 tiempos.append(latencia)

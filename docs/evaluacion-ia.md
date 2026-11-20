@@ -100,3 +100,5 @@ Añadir `--vista-previa` al comando de la batería o de una corrida individual. 
 ## Piloto ejecutable de enrolamiento y comparacion
 
 El flujo vigente de tres metodos con OpenVINO CPU y 10 FPS, galeria revisada, anotacion humana, cache comun y calibracion congelada se documenta en [enrolamiento comparable](trabajo/enrolamiento-comparable.md). La comparacion offline usa comparacion.csv y JSON por escenario. Los resultados del NUC siguen pendientes.
+
+Para capturar y comparar los tres identificadores en una sola sesion usar [la bateria guiada](trabajo/bateria-guiada.md). Incluye modo solo, revision humana e informe agregado.

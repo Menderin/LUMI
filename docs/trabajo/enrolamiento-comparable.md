@@ -106,3 +106,7 @@ La practica activa recuperacion_simulada=True. La primera activacion sigue requi
 Cancelar, repetir o un fallo borran el contador. Aprobar una galeria nueva sigue dejando Listo hasta pulsar S. La recuperacion se registra en acciones.json como reanudar con origen recuperacion_simulada. Configuracion.json registra el modo y el requisito de tres coincidencias. La clase compartida mantiene recuperacion_simulada=False por defecto; esta decision pertenece al piloto visual. Las rotaciones fisicas y su seguridad no se implementan aqui.
 
 Verificacion: pasaron 23 pruebas Python locales. La prueba por el punto de entrada de la ventana simula una oclusion, ve zona Buscando y comprueba reanudacion posterior sin nueva S. Tambien verifica que ambiguedad reinicia el contador, que la galeria permanece fija y que cancelar impide reanudar. La prueba con silla y Logitech en el NUC queda pendiente.
+
+## Ejecucion guiada integrada
+
+El nuevo comando python -m software.percepcion.guiada encadena captura y comparacion. Ver [bateria guiada](bateria-guiada.md). El modo --solo permite medir con una persona e informa que falta validar distractores.

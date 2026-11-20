@@ -218,7 +218,7 @@ def evaluar_puntuaciones(filas, umbral, margen):
             "perdidas_sin_recuperacion": len(pendientes)}, decisiones
 
 
-def elegir_parametros(filas):
+def elegir_parametros(filas, *, exigir_distractor=True):
     valores = [-1.0] + [d for r in filas for d in r["distancias"] if np.isfinite(d)]
     umbrales = np.unique(np.quantile(valores, np.linspace(0, 1, min(24, len(valores)))))
     diferencias = [sorted(r["distancias"])[1]-sorted(r["distancias"])[0]
@@ -229,7 +229,7 @@ def elegir_parametros(filas):
         raise ValueError("Calibracion sin objetivo visible")
     if not any(clasificar(r, None)["ausentes"] for r in filas):
         raise ValueError("Calibracion necesita escena vacia o distractor sin objetivo")
-    if not any(p["id"] != r["objetivo"] for r in filas for p in r["referencia"]):
+    if exigir_distractor and not any(p["id"] != r["objetivo"] for r in filas for p in r["referencia"]):
         raise ValueError("Calibracion necesita distractores anotados")
     mejor = None
     for umbral in umbrales:
@@ -250,17 +250,17 @@ def elegir_parametros(filas):
             "util": mejor[0][1] > 0, "peor_acierto_calibracion": mejor[0][0]}
 
 
-def calibrar(cache_dir, destino):
+def calibrar(cache_dir, destino, *, permitir_sin_distractores=False):
     cache = leer(cache_dir / "cache.json")
     comprobar_cache(cache_dir, cache)
     if destino.exists():
         raise ValueError("Usa un archivo nuevo para conservar la calibracion")
     frames = [r for r in cache["frames"] if r["split"] == "calibracion"]
-    configuracion = {"calibracion_sha256": firma_calibracion(cache),
+    configuracion = {"piloto_sin_distractores": permitir_sin_distractores, "calibracion_sha256": firma_calibracion(cache),
                      "galeria_sha256": cache["galeria_sha256"], "metodos": {}}
     for nombre, modelo in modelos(cache_dir).items():
         filas, _ = puntuar(cache_dir, frames, modelo)
-        configuracion["metodos"][nombre] = elegir_parametros(filas)
+        configuracion["metodos"][nombre] = elegir_parametros(filas, exigir_distractor=not permitir_sin_distractores)
         guardar_representacion(modelo, cache_dir / f"{nombre}.npz")
     guardar_json(destino, configuracion)
 
@@ -322,7 +322,8 @@ def evaluar(cache_dir, configuracion, salida):
         tabla.writerows(totales)
     guardar_json(salida / "recomendacion.json", {
         "candidato": next((r["metodo"] for r in totales if not r["descartado_integracion"]
-                           and r["peor_acierto_visible"] > 0), None),
+                           and r["peor_acierto_visible"] > 0), None)
+                           if not cfg.get("piloto_sin_distractores") else None,
         "alcance": "Solo videos y frames revisados del piloto; requiere validacion fisica",
     })
 

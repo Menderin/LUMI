@@ -46,3 +46,5 @@ Antes de construir o modificar este flujo, leer [el protocolo de construcción](
 ## Piloto de enrolamiento comparable
 
 Antes de cambiar captura, identificacion o zonas, leer [enrolamiento comparable](docs/trabajo/enrolamiento-comparable.md). Usa OpenVINO CPU a 10 FPS, revision humana, acciones comunes de sesion y ordenes simuladas. La comparacion formal usa anotaciones humanas, detecciones compartidas, calibracion separada y evaluacion congelada.
+
+Para la bateria integrada de tres metodos leer [asistente guiado](docs/trabajo/bateria-guiada.md). Los informes sin distractores son exploratorios y no seleccionan ganador de identidad.

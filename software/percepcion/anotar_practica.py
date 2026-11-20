@@ -5,7 +5,41 @@ from pathlib import Path
 
 import cv2
 
-from .practica import ventana_visible, guardar_json
+from .practica import ventana_visible, guardar_json, normalizar_tecla
+
+
+def elegir_objetivo(ventana, frame, personas):
+    """Elegir identidad revisada con tecla o clic, sin volver a la terminal."""
+    cola=[]
+    alto,ancho=frame.shape[:2]
+    def clic(evento,x,y,flags,parametro):
+        if evento != cv2.EVENT_LBUTTONDOWN:
+            return
+        if y >= alto-42:
+            cola.append(0)
+            return
+        for i,persona in enumerate(personas,1):
+            a,b,r,s=persona["bbox"]
+            if a <= x <= r and b <= y <= s:
+                cola.append(i)
+                return
+    cv2.setMouseCallback(ventana,clic)
+    while True:
+        vista=frame.copy()
+        cv2.rectangle(vista,(0,0),(ancho-1,48),(20,20,20),-1)
+        cv2.putText(vista,"Clic en TU recuadro o numero. 0 = ausente",(6,20),
+                    cv2.FONT_HERSHEY_SIMPLEX,.48,(255,255,255),1)
+        cv2.rectangle(vista,(0,alto-42),(ancho-1,alto-1),(65,65,65),-1)
+        cv2.putText(vista,"Objetivo ausente [0] | Esc interrumpe",(8,alto-16),
+                    cv2.FONT_HERSHEY_SIMPLEX,.5,(255,255,255),1)
+        cv2.imshow(ventana,vista)
+        tecla=normalizar_tecla(cv2.waitKey(50))
+        if cola:
+            return cola[0]
+        if tecla == 27 or not ventana_visible(ventana):
+            return None
+        if ord("0") <= tecla <= ord("9") and tecla-ord("0") <= len(personas):
+            return tecla-ord("0")
 
 
 def anotar(video, split, escenario, paso):
@@ -22,6 +56,7 @@ def anotar(video, split, escenario, paso):
     try:
         cv2.namedWindow(ventana, cv2.WINDOW_NORMAL)
         indice = 0
+        interrumpida = False
         while True:
             ok, frame = captura.read()
             if not ok:
@@ -31,8 +66,9 @@ def anotar(video, split, escenario, paso):
                 cv2.putText(vista, f"Frame {indice}: S anotar, N omitir", (8, 25),
                             cv2.FONT_HERSHEY_SIMPLEX, .6, (255, 255, 255), 2)
                 cv2.imshow(ventana, vista)
-                tecla = cv2.waitKey(0) & 0xff
+                tecla = normalizar_tecla(cv2.waitKey(0))
                 if tecla == 27 or not ventana_visible(ventana):
+                    interrumpida = True
                     break
                 if tecla == ord("s"):
                     print("Selecciona TODAS las personas visibles: Enter siguiente recuadro, Esc termina.")
@@ -46,9 +82,10 @@ def anotar(video, split, escenario, paso):
                     cv2.imshow(ventana, frame)
                     cv2.waitKey(1)
                     if personas:
-                        numero = int(input(f"Numero del objetivo (1..{len(personas)}), 0 si ausente: "))
-                        if not 0 <= numero <= len(personas):
-                            raise ValueError("Indice de objetivo invalido; el frame no se guardo")
+                        numero = elegir_objetivo(ventana,frame,personas)
+                        if numero is None:
+                            interrumpida = True
+                            break
                         if numero:
                             personas[numero-1]["id"] = "objetivo"
                     datos["frames"][str(indice)] = personas
@@ -58,6 +95,7 @@ def anotar(video, split, escenario, paso):
         captura.release()
         cv2.destroyAllWindows()
     print(ruta)
+    return not interrumpida
 
 
 def main():
