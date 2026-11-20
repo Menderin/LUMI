@@ -1,5 +1,7 @@
 # Plan acordado de percepción de LUMI
 
+Actualizacion del piloto de laboratorio: captura fuente de 12 segundos, extraccion posterior de hasta 24 recortes (minimo 20) y botones/teclas corregidos segun [enrolamiento comparable](trabajo/enrolamiento-comparable.md). Las cifras de 10 segundos y 8-12 muestras del diseno anterior se conservan como antecedente.
+
 Este documento reúne el plan del piloto y los experimentos de la [HU de Vicente](https://trello.com/c/zU5nasgb). Las 18 horas-persona son una referencia para el primer bloque. La adaptación profunda y la validación física se reestiman después del piloto.
 
 ## Enrolamiento y estados

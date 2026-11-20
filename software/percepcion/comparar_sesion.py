@@ -40,8 +40,8 @@ def preparar(galeria, salida, videos):
     if salida.exists():
         raise ValueError("La salida debe ser nueva para conservar corridas anteriores")
     ficha = leer(galeria / "galeria.json")
-    if not ficha.get("aprobada") or not 8 <= len(ficha["imagenes"]) <= 12:
-        raise ValueError("Se requiere galeria revisada de 8 a 12 recortes")
+    if not ficha.get("aprobada") or not 8 <= len(ficha["imagenes"]) <= 24:
+        raise ValueError("Se requiere galeria revisada de 8 a 24 recortes (galerias anteriores compatibles)")
     # Validar particiones por contenido, no solo por nombre de archivo.
     videos_info = []
     vistos = set()

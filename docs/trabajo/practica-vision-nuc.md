@@ -1,5 +1,7 @@
 # Práctica de cámara y reconocimiento en el NUC
 
+Actualizacion del piloto de laboratorio: captura fuente de 12 segundos, extraccion posterior de hasta 24 recortes (minimo 20) y botones/teclas corregidos segun [enrolamiento comparable](enrolamiento-comparable.md). Las cifras de 10 segundos y 8-12 muestras del diseno anterior se conservan como antecedente.
+
 La práctica abre la Logitech en Ubuntu Desktop y dibuja recuadros de personas con HOG. El seguimiento se muestra en pantalla. La referencia de identidad es una galería de recortes de la sesión, comparados por histograma HSV y distancia de Bhattacharyya.
 
 ## Preparación en Ubuntu

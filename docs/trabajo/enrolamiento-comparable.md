@@ -18,8 +18,8 @@ python -m software.percepcion.practica --camara 0
 
 El detector por defecto es OpenVINO y el tope es 10 FPS. Usa --descargar-modelo si faltan pesos, o --detector hog para la referencia HOG. Los FPS de la camara siguen solicitandose a 15; la iteracion de proceso esta limitada a 10. Revisar FPS efectivos y CPU en pantalla.
 
-- **E** solicita enrolamiento con una unica persona visible. Hay tres segundos para prepararse y luego diez segundos de giro pausado continuo. Se conserva hasta doce recortes, separados 0,8 s, minimo ocho. No se incorporan tramos con cero o varias personas ni recuadros cortados por los bordes.
-- Revisar el video y las miniaturas. **Enter** aprueba identidad y cobertura frente/espalda/perfiles. La sesion queda en **Listo**. Si la galeria no tiene variacion para PCA, se informa fallo y se permite reintento.
+- **E** solicita enrolamiento con una unica persona visible. Hay tres segundos para prepararse y luego doce segundos de grabacion de video fuente mientras giras despacio. Al terminar se reabre el video y se extraen hasta 24 recortes repartidos por los fotogramas validos. Se requieren al menos 20. Los tramos con cero o varias personas y los recuadros cortados por los bordes se descartan.
+- Revisar el video y las 20-24 miniaturas en una unica ventana con botones. **Enter** aprueba identidad y cobertura frente/espalda/perfiles. La sesion queda en **Listo**. Si la galeria no tiene variacion para PCA, se informa fallo y se permite reintento.
 - **S** inicia seguimiento solo con coincidencia vigente. Tras perdida/ambiguedad muestra Detener y requiere otra **S** con coincidencia vigente para reanudar.
 - **C** cancela y descarta la galeria activa. **R** repite si hay una sola persona visible e intentos disponibles. Maximo cinco capturas efectivamente iniciadas por proceso, incluida cada captura cancelada. Cancelar durante la cuenta regresiva no consume captura.
 - **V** inicia/finaliza un clip fuente sin anotaciones. **Esc** termina y cierra los archivos. Grabar calibracion y evaluacion en clips diferentes, independientes del video de enrolamiento.
@@ -86,3 +86,13 @@ Pruebas sinteticas del flujo completo de galeria, AVI, cache, calibracion y eval
 Referencia de gestion: https://trello.com/c/zU5nasgb
 
 Verificacion ejecutada en el entorno local Windows con OpenCV 4.14.0 y scikit-learn 1.9.1. Pasaron las 18 pruebas Python previas/al momento de la integracion, mas una regresion de la ventana por teclado agregada posteriormente. Se comprobo creacion de los tres NPZ con la misma PCA, que confirmar queda Listo y que S inicia seguimiento. Total actual 19 pruebas. La comparacion usa datos sinteticos y no acredita rendimiento en participantes reales.
+
+## Correccion de captura y controles, 2026-11-20
+
+El usuario solicita 24 recortes y video de 12 segundos tras observar nueve recortes y un fallo de enrolamiento. El muestreo anterior cada 0,8 s y su limite de doce se reemplazan en la practica por extraccion posterior desde el AVI fuente. No se duplica un frame para rellenar la galeria. El intervalo de captura usa reloj monotonico. El FPS del AVI sigue siendo nominal; el tiempo real de cada fotograma queda en el JSON de captura. Los lectores offline aceptan galerias anteriores de 8-12 y nuevas de hasta 24.
+
+Se registra enrolamiento-N.captura.json con indices, tiempos y detecciones originales; enrolamiento-N.extraccion.json con origen de cada recorte y conteos sin persona/varias/borde; acciones.json con teclas/acciones aceptadas o rechazadas y motivo. Los fallos de extraccion o PCA mantienen la ventana en Fallo, con opcion de repetir. Ante otra excepcion se guarda error.json con traceback y estado antes de cerrar.
+
+Las teclas aceptan mayusculas y minusculas. Se agregan botones clicables para Enrolar, Repetir, Cancelar, Seguir y Grabar. En revision los botones son Aprobar, Repetir, Cancelar y Salir. S durante la revision indica que primero debe aprobarse con Enter. S en Listo o Perdido requiere una coincidencia valida; la razon de rechazo se muestra en pantalla. Se vacian acciones pendientes al salir de revision para que una pulsacion anterior no inicie seguimiento.
+
+Pasaron 22 pruebas Python locales, incluida una corrida por el punto de entrada de la ventana con reloj/camara simulados, AVI reproducible, captura de 12 s, extraccion de 24 recortes, aprobacion y S posterior. Se verificaron mayusculas, clics, fallo recuperable, videos incompletos y compatibilidad con galerias previas. El cierre informado por el usuario no tiene traceback disponible; no se afirma haber determinado su causa. La interfaz nativa de Ubuntu y el video de la C925e requieren revalidacion en el NUC.

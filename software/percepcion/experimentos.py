@@ -68,8 +68,8 @@ class Identificador:
             self.encoder = sesion_onnx(base / cfg["encoder"], cfg.get("hilos", 1))
         if self.metodo not in {"histograma", "euclidea", "mahalanobis", "reid"}:
             raise ValueError("Método desconocido")
-        if not 1 <= len(muestras) <= 12:
-            raise ValueError("La galería debe contener entre 1 y 12 muestras")
+        if not 1 <= len(muestras) <= 24:
+            raise ValueError("La galería debe contener entre 1 y 24 muestras")
         vectores = np.stack([self.vector(x) for x in muestras])
         if self.metodo in {"euclidea", "mahalanobis"}:
             if proyeccion is None:

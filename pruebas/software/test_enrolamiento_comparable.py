@@ -47,7 +47,7 @@ class FlujoEnrolamiento(unittest.TestCase):
 
     def test_ventana_confirma_y_espera_orden_de_inicio(self):
         from software.percepcion.practica import practica
-        sesion = SesionEnrolamiento()
+        sesion = SesionEnrolamiento(desde_video=True)
         reloj = {"ahora": 0, "frame": 0, "listo": 0}
         def leer_frame():
             reloj["frame"] += 1
@@ -56,8 +56,8 @@ class FlujoEnrolamiento(unittest.TestCase):
             frame[80:150, 120:180] = rng.integers(0, 200, (70,60,3), dtype=np.uint8)
             return True, frame
         def tecla(_):
-            reloj["ahora"] += 1
-            if reloj["ahora"] == 1:
+            reloj["ahora"] = round(reloj["ahora"] + .1, 1)
+            if reloj["frame"] == 1:
                 return ord("e")
             if sesion.registro.estado == "listo":
                 reloj["listo"] += 1
@@ -78,7 +78,7 @@ class FlujoEnrolamiento(unittest.TestCase):
                  patch("software.percepcion.practica.DetectorHOG") as hog, \
                  patch("software.percepcion.practica.time.monotonic", side_effect=lambda: reloj["ahora"]), \
                  patch("software.percepcion.practica.revisar", return_value=13), \
-                 patch("cv2.namedWindow"), patch("cv2.imshow"), patch("cv2.destroyAllWindows"), \
+                 patch("cv2.setMouseCallback"), patch("cv2.namedWindow"), patch("cv2.imshow"), patch("cv2.destroyAllWindows"), \
                  patch("cv2.getWindowProperty", return_value=1), patch("cv2.waitKey", side_effect=tecla):
                 hog.return_value.return_value = [(100,40,200,360)]
                 hog.return_value.metadata = {}
@@ -96,6 +96,7 @@ class FlujoEnrolamiento(unittest.TestCase):
             with a, b:
                 np.testing.assert_array_equal(a["componentes"], b["componentes"])
             self.assertEqual(sesion.registro.intentos, 1)
+            self.assertEqual(len(sesion.registro.galeria), 24)
 
     def test_limite_cancelacion_y_repeticion(self):
         s = SesionEnrolamiento()

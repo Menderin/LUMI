@@ -6,6 +6,7 @@ import math
 import platform
 import subprocess
 import time
+import traceback
 from collections import Counter, deque
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,7 @@ import numpy as np
 import psutil
 
 from .enrolamiento.sesion import SesionEnrolamiento
+from .enrolamiento.video import extraer
 from software.control.direccion_simulada import DireccionSimulada
 from .experimentos import Identificador, recortar, crear_identificadores, guardar_representacion
 
@@ -141,43 +143,90 @@ class Video:
         self.writer.release()
 
 
-def revisar(ruta, muestras):
-    """Reproduce el intento y deja los recortes visibles hasta decidir."""
-    miniaturas = [cv2.resize(m, (64, 112)) for m in muestras]
-    hoja = np.zeros((224, 384, 3), np.uint8)
-    for i, imagen in enumerate(miniaturas):
+
+def normalizar_tecla(codigo):
+    if codigo < 0:
+        return -1
+    codigo &= 0xff
+    return codigo + 32 if ord("A") <= codigo <= ord("Z") else codigo
+
+
+def botones(imagen, opciones, y):
+    ancho = imagen.shape[1]
+    paso = ancho // len(opciones)
+    zonas = []
+    for i, (etiqueta, tecla) in enumerate(opciones):
+        x = i * paso
+        derecha = ancho - 1 if i == len(opciones)-1 else (i+1)*paso-2
+        cv2.rectangle(imagen, (x+1, y), (derecha, y+36), (65,65,65), -1)
+        escala = min(.5, (paso-12)/max(1, cv2.getTextSize(etiqueta, cv2.FONT_HERSHEY_SIMPLEX, 1, 1)[0][0]))
+        cv2.putText(imagen, etiqueta, (x+6, y+23), cv2.FONT_HERSHEY_SIMPLEX,
+                    escala, (255,255,255), 1, cv2.LINE_AA)
+        zonas.append((x, y, derecha, y+36, tecla))
+    return zonas
+
+
+def callback_botones(zonas, cola):
+    def pulsar(evento, x, y, flags, parametro):
+        if evento == cv2.EVENT_LBUTTONDOWN:
+            for izquierda, arriba, derecha, abajo, tecla in zonas:
+                if izquierda <= x <= derecha and arriba <= y <= abajo:
+                    cola.append(tecla)
+                    break
+    return pulsar
+
+
+def revisar(ruta, muestras, registros=None):
+    """Una sola ventana de revision con video, 24 miniaturas y botones."""
+    hoja = np.zeros((448, 384, 3), np.uint8)
+    for i, muestra in enumerate(muestras):
         fila, col = divmod(i, 6)
+        imagen = cv2.resize(muestra, (64,112))
         hoja[fila*112:(fila+1)*112, col*64:(col+1)*64] = imagen
     captura = cv2.VideoCapture(str(ruta))
     if not captura.isOpened():
-        captura.release()
-        raise RuntimeError(f"No se pudo revisar el video {ruta}")
+        raise RuntimeError(f"No se pudo revisar {ruta}")
+    registros = registros or []
+    cola = deque()
+    cv2.namedWindow(REVISION, cv2.WINDOW_NORMAL)
+    aviso = "Enter aprueba | R repite | C cancela. Clic en botones tambien."
     try:
-        ok, frame = captura.read()
-        if not ok:
-            raise RuntimeError(f"El video de enrolamiento está vacío: {ruta}")
-        cv2.imshow(REVISION, frame)
-        cv2.imshow("Recortes - frente, espalda y perfiles", hoja)
         fps = captura.get(cv2.CAP_PROP_FPS)
-        pausa = max(1, round(1000 / (fps if fps > 0 else 15)))
+        pausa = max(1, round(1000/(fps if fps > 0 else 10)))
         while True:
+            indice = int(captura.get(cv2.CAP_PROP_POS_FRAMES))
             ok, frame = captura.read()
-            if ok:
-                cv2.imshow(REVISION, frame)
-            else:
-                captura.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            tecla = cv2.waitKey(pausa) & 0xff
-            if tecla in (10, 13, ord("r"), 27):
+            if not ok:
+                if indice == 0:
+                    raise RuntimeError("El video de revision esta vacio")
+                captura.set(cv2.CAP_PROP_POS_FRAMES,0)
+                continue
+            if indice < len(registros):
+                for x,y,r,b in registros[indice]["cajas"]:
+                    cv2.rectangle(frame,(x,y),(r,b),(0,200,255),2)
+            lienzo = np.zeros((560,1024,3), np.uint8)
+            lienzo[:480,:640] = cv2.resize(frame,(640,480))
+            lienzo[:448,640:] = hoja
+            cv2.putText(lienzo,aviso,(8,500),cv2.FONT_HERSHEY_SIMPLEX,.6,(255,255,255),1)
+            zonas = botones(lienzo,[("Aprobar [Enter]",13),("Repetir [R]",ord("r")),
+                                     ("Cancelar [C]",ord("c")),("Salir [Esc]",27)],514)
+            cv2.setMouseCallback(REVISION,callback_botones(zonas,cola))
+            cv2.imshow(REVISION,lienzo)
+            tecla = normalizar_tecla(cv2.waitKey(pausa))
+            if cola:
+                tecla = cola.popleft()
+            if tecla in (10,13,ord("r"),ord("c"),27):
                 return tecla
+            if tecla == ord("s"):
+                aviso = "Primero aprueba con Enter. Luego S inicia en la ventana principal."
             if not ventana_visible(REVISION):
-                return ord("r")
+                return ord("c")
     finally:
         captura.release()
-        for ventana in (REVISION, "Recortes - frente, espalda y perfiles"):
-            try:
-                cv2.destroyWindow(ventana)
-            except cv2.error:
-                pass
+        try:
+            cv2.destroyWindow(REVISION)
+        except cv2.error:
+            pass
 
 
 def commit_local():
@@ -235,11 +284,14 @@ def practica(args, carpeta):
     else:
         detector = DetectorHOG(args.hog_umbral)
     captura = abrir_camara(args)
-    sesion = SesionEnrolamiento()
+    sesion = SesionEnrolamiento(desde_video=True)
     estado = sesion.registro
     direccion = DireccionSimulada()
     identificador = None
     intento = None
+    registros_intento = []
+    informe_intento = {}
+    cola_botones = deque()
     clip = None
     video_intento = None
     frames_clip = 0
@@ -276,6 +328,8 @@ def practica(args, carpeta):
             tecla = -1
             while True:
                 inicio = time.monotonic()
+                if cola_botones:
+                    tecla = cola_botones.popleft()
                 if inicio - ultimo_recurso >= 1:
                     memoria = psutil.virtual_memory()
                     temperaturas = []
@@ -310,6 +364,7 @@ def practica(args, carpeta):
                     if intento is not None:
                         intento.cerrar()
                         intento = None
+                        guardar_json(video_intento.with_suffix(".captura.json"), registros_intento)
                     if clip is not None:
                         clip.cerrar()
                         clip = None
@@ -326,18 +381,23 @@ def practica(args, carpeta):
                     sesion.accion(accion, ahora, objetivo=candidato is not None)
                 siguiendo = sesion.actualizar(
                     ahora, objetivo=candidato is not None, personas=len(cajas),
-                    recorte=recorte_enrolamiento(frame, cajas),
+                    recorte=recorte_enrolamiento(frame, cajas) if not sesion.desde_video else None,
                 )
                 if estado.estado == "enrolando" and intento is None:
                     video_intento = carpeta / f"enrolamiento-{estado.intentos}.avi"
                     intento = Video(video_intento, fps, frame)
+                    registros_intento = []
+                    informe_intento = {}
                 objetivo = candidato if siguiendo else None
                 muestras = len(estado.muestras)
                 mensaje = estado.estado if identificador is None or siguiendo else "Sin objetivo"
                 if estado.estado == "preparando":
                     mensaje = f"Preparate: {math.ceil(sesion.estado(ahora)['segundos_restantes'])}"
                 elif estado.estado == "enrolando":
-                    mensaje = f"Enrolando: {muestras}/12 muestras"
+                    restante = math.ceil(sesion.estado(ahora)["segundos_restantes"])
+                    mensaje = f"Grabando video: {restante}s restantes ({len(registros_intento)} frames)"
+                elif estado.estado == "procesando":
+                    mensaje = "Extrayendo hasta 24 recortes del video..."
                 elif estado.estado == "listo":
                     mensaje = "Listo - S inicia seguimiento"
                 elif estado.estado in ("espera", "fallo") and estado.intentos == 5:
@@ -350,6 +410,12 @@ def practica(args, carpeta):
                 for limite in (.4, .6):
                     x = round(frame.shape[1] * limite)
                     cv2.line(imagen, (x, 55), (x, max(55, frame.shape[0] - 85)), (255, 200, 0), 1)
+                cv2.putText(imagen, sesion.mensaje[:84], (8, 90),
+                            cv2.FONT_HERSHEY_SIMPLEX, .43, (255,255,255), 1)
+                zonas = botones(imagen, [("Enrolar [E]",ord("e")),("Repetir [R]",ord("r")),
+                                       ("Cancelar [C]",ord("c")),("Seguir [S]",ord("s")),
+                                       ("Grabar [V]",ord("v"))], max(96,imagen.shape[0]-126))
+                cv2.setMouseCallback(VENTANA,callback_botones(zonas,cola_botones))
                 cv2.putText(imagen, "SIMULACION: " + orden["intencion"], (8, 70),
                             cv2.FONT_HERSHEY_SIMPLEX, .65, (255, 255, 255), 2)
                 latencia = (time.monotonic() - inicio) * 1000
@@ -371,20 +437,40 @@ def practica(args, carpeta):
                     clip.escribir(frame)
                     frames_clip += 1
                 if intento is not None:
-                    intento.escribir(imagen)
-                    if estado.estado != "enrolando":
+                    if estado.estado == "enrolando":
+                        intento.escribir(frame)
+                        registros_intento.append({
+                            "frame": len(registros_intento), "tiempo_s": ahora,
+                            "cajas": cajas, "ancho": frame.shape[1], "alto": frame.shape[0],
+                        })
+                    else:
                         intento.cerrar()
                         intento = None
+                        guardar_json(video_intento.with_suffix(".captura.json"), registros_intento)
+                        if estado.estado == "procesando":
+                            cv2.imshow(VENTANA, imagen)
+                            cv2.waitKey(1)
+                            try:
+                                muestras_video, informe_intento = extraer(video_intento, registros_intento)
+                                if not sesion.completar_video(muestras_video):
+                                    descartes = informe_intento["descartes"]
+                                    sesion.mensaje += f"; sin persona {descartes['sin_persona']}, varias {descartes['varias_personas']}, borde {descartes['borde']}"
+                            except (ValueError, OSError, RuntimeError, cv2.error) as error:
+                                sesion.fallar(f"Extraccion fallida: {error}")
+                                informe_intento = {"error": str(error)}
+                            guardar_json(video_intento.with_suffix(".extraccion.json"), informe_intento)
+                            print(sesion.mensaje, flush=True)
                 cv2.imshow(VENTANA, imagen)
                 espera_ms = max(1, round((1 / args.fps_proceso - (time.monotonic() - inicio)) * 1000))
-                tecla = cv2.waitKey(espera_ms) & 0xff
+                tecla = normalizar_tecla(cv2.waitKey(espera_ms))
                 ciclo = time.monotonic() - inicio
                 iteraciones.append(ciclo)
                 duracion += ciclo
                 if tecla == 27 or not ventana_visible(VENTANA):
                     break
                 if estado.estado == "revision":
-                    log_decision = revisar(video_intento, estado.muestras)
+                    log_decision = revisar(video_intento, estado.muestras, registros_intento)
+                    cola_botones.clear()
                     if log_decision == 27:
                         break
                     if log_decision in (10, 13):
@@ -392,8 +478,7 @@ def practica(args, carpeta):
                             modelos = crear_identificadores(estado.muestras, REPO)
                         except ValueError as error:
                             print(f"Enrolamiento fallido: {error}", flush=True)
-                            sesion.accion("cancelar", time.monotonic())
-                            estado.estado = "fallo"
+                            sesion.fallar(f"Codificacion fallida: {error}")
                             tecla = -1
                             continue
                         sesion.accion("confirmar", time.monotonic())
@@ -407,17 +492,25 @@ def practica(args, carpeta):
                         guardar_json(destino / "galeria.json", {
                             "aprobada": True, "sesion": carpeta.name, "intento": estado.intentos,
                             "imagenes": [f"{i:02}.png" for i in range(1, len(estado.galeria) + 1)],
-                            "metodos": list(modelos),
+                            "metodos": list(modelos), "duracion_captura_s": sesion.duracion,
+                            "origen_recortes": informe_intento.get("seleccion", []),
                         })
                         print(f"Galeria aprobada: {destino}. Pulsa S para iniciar.", flush=True)
                         identificador = modelos[getattr(args, "metodo", "histograma")]
                         tecla = -1
                     else:
                         sesion.accion("cancelar", time.monotonic())
-                        tecla = -1
+                        tecla = ord("r") if log_decision == ord("r") else -1
+    except Exception:
+        guardar_json(carpeta / "error.json", {"error": traceback.format_exc(),
+                     "estado": estado.estado, "intento": estado.intentos})
+        raise
     finally:
         captura.release()
         recursos.close()
+        guardar_json(carpeta / "acciones.json", sesion.eventos)
+        if video_intento is not None:
+            guardar_json(video_intento.with_suffix(".captura.json"), registros_intento)
         for video in (intento, clip):
             if video is not None:
                 video.cerrar()
@@ -496,7 +589,9 @@ def main():
             or not 0 <= args.confianza <= 1
             or not math.isfinite(args.hog_umbral) or args.hog_umbral < 0
             or args.camara < 0 or args.ancho < 64 or args.alto < 128 or args.fps < 1
-            or not 0 <= args.umbral <= 1 or not 0 <= args.margen <= 1):
+            or not math.isfinite(args.umbral) or args.umbral < 0
+            or (args.metodo == "histograma" and args.umbral > 1)
+            or not math.isfinite(args.margen) or args.margen < 0):
         parser.error("Cámara, resolución, FPS, umbral o margen fuera de rango")
     carpeta = REPO / "datos" / "enrolamientos" / datetime.now().strftime("practica-%Y%m%d-%H%M%S-%f")
     carpeta.mkdir(parents=True, exist_ok=False)

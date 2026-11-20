@@ -39,7 +39,7 @@ class OpenVINOAdapter(unittest.TestCase):
         with tempfile.TemporaryDirectory() as destino:
             with patch("software.percepcion.practica.abrir_camara", return_value=camara), \
                  patch("software.percepcion.practica.DetectorHOG") as hog, \
-                 patch("cv2.namedWindow"), patch("cv2.imshow"), \
+                 patch("cv2.setMouseCallback"), patch("cv2.namedWindow"), patch("cv2.imshow"), \
                  patch("cv2.destroyAllWindows"), patch("cv2.waitKey", return_value=27):
                 hog.return_value.return_value = []
                 hog.return_value.metadata = {}
