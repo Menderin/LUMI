@@ -102,3 +102,5 @@ Solo para ensayo Android→ESP: app 0.5.0 usa UDP 8082 con ACK/tickets ESP para 
 ## Sesion de percepcion y direccion simulada, 2026-11-20
 
 El NUC mantiene la sesion de enrolamiento. La ventana usa acciones iniciar, confirmar, cancelar, repetir, iniciar_seguimiento y reanudar. Confirmar deja Listo y no inicia seguimiento. La futura app invocara esas acciones sobre el mismo propietario. Las zonas 40-60 % con histeresis producen intenciones visuales; Alineado no autoriza avance ni mide distancia. Ver [flujo y contratos](trabajo/enrolamiento-comparable.md).
+
+En el piloto visual, la recuperacion simulada continua tras perdida y reanuda con tres coincidencias consecutivas. Es un modo explicito de la practica, con busqueda visual y registro. El contrato de actuacion fisica requiere su validacion independiente. Ver el registro de enrolamiento comparable.

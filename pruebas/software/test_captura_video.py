@@ -49,6 +49,31 @@ class CapturaVideo(unittest.TestCase):
         self.assertFalse(s.eventos[-1]["aceptada"])
         self.assertTrue(s.accion("iniciar_seguimiento",18,objetivo=True))
 
+    def test_busqueda_simulada_reencuentro_y_ambiguedad(self):
+        s=SesionEnrolamiento(recuperacion_simulada=True)
+        s.registro.estado="listo"
+        s.registro.galeria=([1],[2])
+        original=s.registro.galeria
+        for t in range(4):
+            self.assertFalse(s.actualizar(t,objetivo=True))
+        self.assertEqual(s.registro.estado,"listo")
+        self.assertTrue(s.accion("iniciar_seguimiento",4,objetivo=True))
+        self.assertFalse(s.actualizar(5,objetivo=False))
+        self.assertEqual(s.registro.estado,"perdido")
+        self.assertFalse(s.actualizar(6,objetivo=True))
+        self.assertFalse(s.actualizar(7,objetivo=True))
+        self.assertFalse(s.actualizar(8,objetivo=False))
+        self.assertEqual(s.coincidencias_reencuentro,0)
+        self.assertFalse(s.actualizar(9,objetivo=True))
+        self.assertFalse(s.actualizar(10,objetivo=True))
+        self.assertTrue(s.actualizar(11,objetivo=True))
+        self.assertIs(s.registro.galeria,original)
+        self.assertEqual(s.eventos[-1]["origen"],"recuperacion_simulada")
+        s.accion("cancelar",12)
+        for t in range(13,18):
+            self.assertFalse(s.actualizar(t,objetivo=True))
+        self.assertEqual(s.registro.estado,"espera")
+
     def test_fallo_recuperable_y_descartes(self):
         s=SesionEnrolamiento(desde_video=True)
         s.accion("iniciar",0,personas=1)

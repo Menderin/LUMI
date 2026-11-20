@@ -47,8 +47,8 @@ class FlujoEnrolamiento(unittest.TestCase):
 
     def test_ventana_confirma_y_espera_orden_de_inicio(self):
         from software.percepcion.practica import practica
-        sesion = SesionEnrolamiento(desde_video=True)
-        reloj = {"ahora": 0, "frame": 0, "listo": 0}
+        sesion = SesionEnrolamiento(desde_video=True, recuperacion_simulada=True)
+        reloj = {"ahora": 0, "frame": 0, "listo": 0, "occlusion": False}
         def leer_frame():
             reloj["frame"] += 1
             rng = np.random.default_rng(reloj["frame"])
@@ -62,11 +62,16 @@ class FlujoEnrolamiento(unittest.TestCase):
             if sesion.registro.estado == "listo":
                 reloj["listo"] += 1
                 return ord("s") if reloj["listo"] == 2 else -1
-            if sesion.registro.estado == "siguiendo":
+            if sesion.registro.estado == "siguiendo" and reloj["occlusion"]:
                 return 27
             if reloj["ahora"] > 25:
                 return 27
             return -1
+        def detecciones(frame):
+            if sesion.registro.estado == "siguiendo" and not reloj["occlusion"]:
+                reloj["occlusion"] = True
+                return []
+            return [(100,40,200,360)]
         camara = MagicMock()
         camara.get.return_value = 15
         camara.read.side_effect = leer_frame
@@ -80,13 +85,18 @@ class FlujoEnrolamiento(unittest.TestCase):
                  patch("software.percepcion.practica.revisar", return_value=13), \
                  patch("cv2.setMouseCallback"), patch("cv2.namedWindow"), patch("cv2.imshow"), patch("cv2.destroyAllWindows"), \
                  patch("cv2.getWindowProperty", return_value=1), patch("cv2.waitKey", side_effect=tecla):
-                hog.return_value.return_value = [(100,40,200,360)]
+                hog.return_value.side_effect = detecciones
                 hog.return_value.metadata = {}
                 practica(args, Path(destino))
             with (Path(destino)/"decisiones.csv").open() as f:
                 filas = list(csv.DictReader(f))
             self.assertIn("listo", [r["estado"] for r in filas])
             self.assertIn("siguiendo", [r["estado"] for r in filas])
+            self.assertIn("buscando", [r["zona"] for r in filas])
+            perdidas = [i for i,r in enumerate(filas) if r["estado"] == "perdido"]
+            self.assertTrue(perdidas)
+            self.assertTrue(any(r["estado"] == "siguiendo" for r in filas[max(perdidas)+1:]))
+            self.assertEqual(sum(e.get("origen") == "recuperacion_simulada" for e in sesion.eventos),1)
             for r in filas:
                 if r["estado"] == "listo":
                     self.assertEqual(r["intencion"], "Detener / sin objetivo")

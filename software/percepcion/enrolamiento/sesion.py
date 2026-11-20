@@ -5,8 +5,10 @@ from .estado import Enrolamiento
 class SesionEnrolamiento:
     acciones = ("iniciar", "confirmar", "cancelar", "repetir", "iniciar_seguimiento", "reanudar")
 
-    def __init__(self, *, desde_video=False):
+    def __init__(self, *, desde_video=False, recuperacion_simulada=False):
         self.registro = Enrolamiento()
+        self.recuperacion_simulada = recuperacion_simulada
+        self.coincidencias_reencuentro = 0
         self.desde_video = desde_video
         self.duracion = 12 if desde_video else 10
         self.minimo = 20 if desde_video else 8
@@ -29,6 +31,7 @@ class SesionEnrolamiento:
         r = self.registro
         if nombre == "cancelar":
             r.descartar()
+            self.coincidencias_reencuentro = 0
             self.cuenta_hasta = None
             self.mensaje = "Cancelado. Pulsa E o Enrolar para empezar"
             return True
@@ -43,6 +46,7 @@ class SesionEnrolamiento:
                 self.mensaje = "Cancela o pulsa Repetir para un nuevo enrolamiento"
                 return False
             r.descartar()
+            self.coincidencias_reencuentro = 0
             r.estado = "preparando"
             self.cuenta_hasta = ahora + 3
             self.mensaje = "Preparate para girar durante la captura"
@@ -76,8 +80,21 @@ class SesionEnrolamiento:
             if ahora - r._inicio >= self.duracion:
                 r.estado = "procesando"
             return False
-        return r.actualizar(ahora, personas=personas, recorte=recorte,
-                            objetivo=objetivo, pedir_revision=True)
+        if self.recuperacion_simulada and r.estado == "perdido":
+            self.coincidencias_reencuentro = self.coincidencias_reencuentro + 1 if objetivo else 0
+            self.mensaje = f"Buscando objetivo... coincidencias {self.coincidencias_reencuentro}/3"
+            if self.coincidencias_reencuentro >= 3:
+                self.accion("reanudar", ahora, objetivo=True)
+                self.eventos[-1]["origen"] = "recuperacion_simulada"
+                self.mensaje = "Objetivo reencontrado. Seguimiento visual reanudado"
+                self.coincidencias_reencuentro = 0
+        anterior = r.estado
+        siguiendo = r.actualizar(ahora, personas=personas, recorte=recorte,
+                                objetivo=objetivo, pedir_revision=True)
+        if self.recuperacion_simulada and anterior == "siguiendo" and not siguiendo:
+            self.coincidencias_reencuentro = 0
+            self.mensaje = "Buscando objetivo... sigue entrando en el encuadre"
+        return siguiendo
 
     def completar_video(self, muestras):
         r = self.registro
@@ -93,6 +110,7 @@ class SesionEnrolamiento:
 
     def fallar(self, motivo):
         self.registro.descartar()
+        self.coincidencias_reencuentro = 0
         self.registro.estado = "fallo"
         self.cuenta_hasta = None
         self.mensaje = motivo
@@ -102,4 +120,6 @@ class SesionEnrolamiento:
         return {"estado": r.estado, "intentos": r.intentos,
                 "segundos_restantes": max(0, (self.cuenta_hasta or r._inicio + self.duracion) - ahora)
                 if r.estado in ("preparando", "enrolando") else 0,
-                "muestras": len(r.muestras), "mensaje": self.mensaje}
+                "muestras": len(r.muestras), "mensaje": self.mensaje,
+                "recuperacion_simulada": self.recuperacion_simulada,
+                "coincidencias_reencuentro": self.coincidencias_reencuentro}

@@ -284,7 +284,7 @@ def practica(args, carpeta):
     else:
         detector = DetectorHOG(args.hog_umbral)
     captura = abrir_camara(args)
-    sesion = SesionEnrolamiento(desde_video=True)
+    sesion = SesionEnrolamiento(desde_video=True, recuperacion_simulada=True)
     estado = sesion.registro
     direccion = DireccionSimulada()
     identificador = None
@@ -317,6 +317,8 @@ def practica(args, carpeta):
             "commit": commit_local(), "sistema": platform.platform(),
              "detector": args.detector, "identificador": getattr(args, "metodo", "histograma"),
             "runtime": getattr(detector, "metadata", {}),
+            "recuperacion_simulada": sesion.recuperacion_simulada,
+            "coincidencias_para_reanudar": 3,
         })
         fps = formato["fps_reportado"]
         fps = min(fps if math.isfinite(fps) and fps > 0 else args.fps, args.fps_proceso)
@@ -398,15 +400,20 @@ def practica(args, carpeta):
                     mensaje = f"Grabando video: {restante}s restantes ({len(registros_intento)} frames)"
                 elif estado.estado == "procesando":
                     mensaje = "Extrayendo hasta 24 recortes del video..."
+                elif estado.estado == "perdido" and sesion.recuperacion_simulada:
+                    mensaje = "Buscando objetivo..."
                 elif estado.estado == "listo":
                     mensaje = "Listo - S inicia seguimiento"
                 elif estado.estado in ("espera", "fallo") and estado.intentos == 5:
                     mensaje = "Limite de 5 intentos"
                 elif identificador is not None and motivo == "coincidencia" and not siguiendo:
-                    motivo = "esperando_confirmacion"
+                    motivo = ("confirmando_reencuentro" if estado.estado == "perdido"
+                              and sesion.recuperacion_simulada else "esperando_confirmacion")
                 imagen = dibujar(frame, cajas, distancias, objetivo, mensaje,
                                  f"E enrolar | R repetir | C cancelar | S seguir | V video | Esc")
-                orden = direccion.actualizar(cajas[objetivo] if objetivo is not None else None, frame.shape[1])
+                orden = direccion.actualizar(
+                    cajas[objetivo] if objetivo is not None else None, frame.shape[1],
+                    buscando=estado.estado == "perdido" and sesion.recuperacion_simulada)
                 for limite in (.4, .6):
                     x = round(frame.shape[1] * limite)
                     cv2.line(imagen, (x, 55), (x, max(55, frame.shape[0] - 85)), (255, 200, 0), 1)

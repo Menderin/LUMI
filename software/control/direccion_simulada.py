@@ -6,10 +6,11 @@ from dataclasses import dataclass
 class DireccionSimulada:
     zona: str = "detenido"
 
-    def actualizar(self, caja, ancho):
+    def actualizar(self, caja, ancho, *, buscando=False):
         if caja is None:
-            self.zona = "detenido"
-            return {"zona": self.zona, "x_normalizada": None, "intencion": "Detener / sin objetivo"}
+            self.zona = "buscando" if buscando else "detenido"
+            return {"zona": self.zona, "x_normalizada": None,
+                    "intencion": "Buscando objetivo" if buscando else "Detener / sin objetivo"}
         x = (caja[0] + caja[2]) / (2 * ancho)
         if x < .37:
             self.zona = "izquierda"

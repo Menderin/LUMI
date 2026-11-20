@@ -20,7 +20,7 @@ El detector por defecto es OpenVINO y el tope es 10 FPS. Usa --descargar-modelo 
 
 - **E** solicita enrolamiento con una unica persona visible. Hay tres segundos para prepararse y luego doce segundos de grabacion de video fuente mientras giras despacio. Al terminar se reabre el video y se extraen hasta 24 recortes repartidos por los fotogramas validos. Se requieren al menos 20. Los tramos con cero o varias personas y los recuadros cortados por los bordes se descartan.
 - Revisar el video y las 20-24 miniaturas en una unica ventana con botones. **Enter** aprueba identidad y cobertura frente/espalda/perfiles. La sesion queda en **Listo**. Si la galeria no tiene variacion para PCA, se informa fallo y se permite reintento.
-- **S** inicia seguimiento solo con coincidencia vigente. Tras perdida/ambiguedad muestra Detener y requiere otra **S** con coincidencia vigente para reanudar.
+- **S** inicia seguimiento solo con coincidencia vigente. Tras perdida/ambiguedad muestra Buscando objetivo y, en esta simulacion, reanuda automaticamente despues de tres coincidencias validas consecutivas.
 - **C** cancela y descarta la galeria activa. **R** repite si hay una sola persona visible e intentos disponibles. Maximo cinco capturas efectivamente iniciadas por proceso, incluida cada captura cancelada. Cancelar durante la cuenta regresiva no consume captura.
 - **V** inicia/finaliza un clip fuente sin anotaciones. **Esc** termina y cierra los archivos. Grabar calibracion y evaluacion en clips diferentes, independientes del video de enrolamiento.
 - El modo en vivo inicial usa histograma con umbral provisional 0,45 y margen 0,08. Para pruebas manuales de PCA usar --metodo euclidea o --metodo mahalanobis y un --umbral especifico. Las escalas de las distancias son diferentes. La seleccion formal se hace offline, sin ajustar umbrales mirando la evaluacion.
@@ -96,3 +96,13 @@ Se registra enrolamiento-N.captura.json con indices, tiempos y detecciones origi
 Las teclas aceptan mayusculas y minusculas. Se agregan botones clicables para Enrolar, Repetir, Cancelar, Seguir y Grabar. En revision los botones son Aprobar, Repetir, Cancelar y Salir. S durante la revision indica que primero debe aprobarse con Enter. S en Listo o Perdido requiere una coincidencia valida; la razon de rechazo se muestra en pantalla. Se vacian acciones pendientes al salir de revision para que una pulsacion anterior no inicie seguimiento.
 
 Pasaron 22 pruebas Python locales, incluida una corrida por el punto de entrada de la ventana con reloj/camara simulados, AVI reproducible, captura de 12 s, extraccion de 24 recortes, aprobacion y S posterior. Se verificaron mayusculas, clics, fallo recuperable, videos incompletos y compatibilidad con galerias previas. El cierre informado por el usuario no tiene traceback disponible; no se afirma haber determinado su causa. La interfaz nativa de Ubuntu y el video de la C925e requieren revalidacion en el NUC.
+
+## Reencuentro automatico en la simulacion, 2026-11-20
+
+El usuario solicita seguir buscando despues de una oclusion, como quedar detras de una silla. La ventana ya seguia capturando y puntuando imagenes; lo que bloqueaba la reanudacion era el estado Perdido y la exigencia de otra pulsacion S.
+
+La practica activa recuperacion_simulada=True. La primera activacion sigue requiriendo galeria aprobada y S. Tras una perdida la interfaz y el CSV indican Buscando objetivo. Se exige coincidencia no ambigua con la galeria fija durante tres fotogramas consecutivos y luego se reanuda el seguimiento visual sin otra pulsacion. Una ausencia, rechazo o ambiguedad reinicia el contador. A 10 FPS efectivos son aproximadamente 0,3 s; depende de la frecuencia real.
+
+Cancelar, repetir o un fallo borran el contador. Aprobar una galeria nueva sigue dejando Listo hasta pulsar S. La recuperacion se registra en acciones.json como reanudar con origen recuperacion_simulada. Configuracion.json registra el modo y el requisito de tres coincidencias. La clase compartida mantiene recuperacion_simulada=False por defecto; esta decision pertenece al piloto visual. Las rotaciones fisicas y su seguridad no se implementan aqui.
+
+Verificacion: pasaron 23 pruebas Python locales. La prueba por el punto de entrada de la ventana simula una oclusion, ve zona Buscando y comprueba reanudacion posterior sin nueva S. Tambien verifica que ambiguedad reinicia el contador, que la galeria permanece fija y que cancelar impide reanudar. La prueba con silla y Logitech en el NUC queda pendiente.
