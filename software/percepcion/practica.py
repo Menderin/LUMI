@@ -14,8 +14,9 @@ import cv2
 import numpy as np
 import psutil
 
-from .enrolamiento.estado import Enrolamiento
-from .experimentos import Identificador, recortar
+from .enrolamiento.sesion import SesionEnrolamiento
+from software.control.direccion_simulada import DireccionSimulada
+from .experimentos import Identificador, recortar, crear_identificadores, guardar_representacion
 
 VENTANA = "LUMI - Vision"
 REVISION = "LUMI - Revision (Enter aprueba, R descarta)"
@@ -234,7 +235,9 @@ def practica(args, carpeta):
     else:
         detector = DetectorHOG(args.hog_umbral)
     captura = abrir_camara(args)
-    estado = Enrolamiento()
+    sesion = SesionEnrolamiento()
+    estado = sesion.registro
+    direccion = DireccionSimulada()
     identificador = None
     intento = None
     clip = None
@@ -260,7 +263,7 @@ def practica(args, carpeta):
         guardar_json(carpeta / "configuracion.json", {
             **vars(args), "captura": formato, "opencv": cv2.__version__,
             "commit": commit_local(), "sistema": platform.platform(),
-             "detector": args.detector, "identificador": "HSV / Bhattacharyya",
+             "detector": args.detector, "identificador": getattr(args, "metodo", "histograma"),
             "runtime": getattr(detector, "metadata", {}),
         })
         fps = formato["fps_reportado"]
@@ -269,7 +272,7 @@ def practica(args, carpeta):
         with (carpeta / "decisiones.csv").open("w", newline="", encoding="utf-8") as archivo:
             log = csv.writer(archivo)
             log.writerow(["frame", "tiempo_monotonico_s", "estado", "motivo", "cajas",
-                          "distancias", "objetivo", "latencia_local_ms", "clip", "frame_clip"])
+                          "distancias", "objetivo", "latencia_local_ms", "clip", "frame_clip", "zona", "x_normalizada", "intencion", "detector_ms"])
             tecla = -1
             while True:
                 inicio = time.monotonic()
@@ -297,43 +300,58 @@ def practica(args, carpeta):
                 if not ok:
                     raise RuntimeError("La cámara dejó de entregar imágenes")
                 ahora = time.monotonic()
+                inicio_detector = time.monotonic()
                 cajas = detectar(frame, detector)
+                detector_ms = (time.monotonic() - inicio_detector) * 1000
                 distancias = []
                 candidato = None
                 motivo = "sin_galeria"
-                if tecla == ord("r"):
+                if tecla in (ord("r"), ord("c")):
                     if intento is not None:
                         intento.cerrar()
                         intento = None
                     if clip is not None:
                         clip.cerrar()
                         clip = None
-                    estado.descartar()
-                    identificador = None
-                if (tecla == ord("e") and estado.estado in ("espera", "fallo")
-                        and estado.intentos < 5 and len(cajas) == 1):
-                    estado.actualizar(ahora, pulsacion=True)
-                    video_intento = carpeta / f"enrolamiento-{estado.intentos}.avi"
-                    intento = Video(video_intento, fps, frame)
-                elif identificador is not None:
+                    accion = "repetir" if tecla == ord("r") else "cancelar"
+                    if sesion.accion(accion, ahora, personas=len(cajas)):
+                        identificador = None
+                if tecla == ord("e"):
+                    sesion.accion("iniciar", ahora, personas=len(cajas))
+                if identificador is not None:
                     distancias = [identificador.distancia(recortar(frame, caja)) for caja in cajas]
                     candidato, motivo = resolver(distancias, args.umbral, args.margen)
-                siguiendo = estado.actualizar(
-                    ahora, pulsacion=tecla in (10, 13) and identificador is not None,
-                    objetivo=candidato is not None, personas=len(cajas),
-                    recorte=recorte_enrolamiento(frame, cajas), pedir_revision=True,
+                if tecla == ord("s"):
+                    accion = "reanudar" if estado.estado == "perdido" else "iniciar_seguimiento"
+                    sesion.accion(accion, ahora, objetivo=candidato is not None)
+                siguiendo = sesion.actualizar(
+                    ahora, objetivo=candidato is not None, personas=len(cajas),
+                    recorte=recorte_enrolamiento(frame, cajas),
                 )
+                if estado.estado == "enrolando" and intento is None:
+                    video_intento = carpeta / f"enrolamiento-{estado.intentos}.avi"
+                    intento = Video(video_intento, fps, frame)
                 objetivo = candidato if siguiendo else None
                 muestras = len(estado.muestras)
                 mensaje = estado.estado if identificador is None or siguiendo else "Sin objetivo"
-                if estado.estado == "enrolando":
+                if estado.estado == "preparando":
+                    mensaje = f"Preparate: {math.ceil(sesion.estado(ahora)['segundos_restantes'])}"
+                elif estado.estado == "enrolando":
                     mensaje = f"Enrolando: {muestras}/12 muestras"
+                elif estado.estado == "listo":
+                    mensaje = "Listo - S inicia seguimiento"
                 elif estado.estado in ("espera", "fallo") and estado.intentos == 5:
                     mensaje = "Limite de 5 intentos"
                 elif identificador is not None and motivo == "coincidencia" and not siguiendo:
                     motivo = "esperando_confirmacion"
                 imagen = dibujar(frame, cajas, distancias, objetivo, mensaje,
-                                 f"E enrolar | R reiniciar | V video | Esc   {motivo}")
+                                 f"E enrolar | R repetir | C cancelar | S seguir | V video | Esc")
+                orden = direccion.actualizar(cajas[objetivo] if objetivo is not None else None, frame.shape[1])
+                for limite in (.4, .6):
+                    x = round(frame.shape[1] * limite)
+                    cv2.line(imagen, (x, 55), (x, max(55, frame.shape[0] - 85)), (255, 200, 0), 1)
+                cv2.putText(imagen, "SIMULACION: " + orden["intencion"], (8, 70),
+                            cv2.FONT_HERSHEY_SIMPLEX, .65, (255, 255, 255), 2)
                 latencia = (time.monotonic() - inicio) * 1000
                 mostrar_rendimiento(imagen, latencia, iteraciones, cpu_sistema, cpu_proceso)
                 tiempos.append(latencia)
@@ -347,7 +365,8 @@ def practica(args, carpeta):
                         frames_clip = 0
                 log.writerow([len(tiempos), ahora, estado.estado, motivo, json.dumps(cajas),
                               json.dumps(distancias), objetivo, latencia,
-                              clip.ruta.name if clip else "", frames_clip if clip else ""])
+                              clip.ruta.name if clip else "", frames_clip if clip else "",
+                              orden["zona"], orden["x_normalizada"], orden["intencion"], detector_ms])
                 if clip is not None:
                     clip.escribir(frame)
                     frames_clip += 1
@@ -369,16 +388,32 @@ def practica(args, carpeta):
                     if log_decision == 27:
                         break
                     if log_decision in (10, 13):
-                        estado.confirmar_revision(time.monotonic())
-                        identificador = Identificador(estado.galeria, {"metodo": "histograma"}, REPO)
+                        try:
+                            modelos = crear_identificadores(estado.muestras, REPO)
+                        except ValueError as error:
+                            print(f"Enrolamiento fallido: {error}", flush=True)
+                            sesion.accion("cancelar", time.monotonic())
+                            estado.estado = "fallo"
+                            tecla = -1
+                            continue
+                        sesion.accion("confirmar", time.monotonic())
                         destino = carpeta / f"galeria-{estado.intentos}"
                         destino.mkdir()
                         for i, muestra in enumerate(estado.galeria, 1):
                             if not cv2.imwrite(str(destino / f"{i:02}.png"), muestra):
                                 raise RuntimeError("No se pudo guardar un recorte aprobado")
-                        tecla = 13
+                        for nombre, modelo in modelos.items():
+                            guardar_representacion(modelo, destino / f"{nombre}.npz")
+                        guardar_json(destino / "galeria.json", {
+                            "aprobada": True, "sesion": carpeta.name, "intento": estado.intentos,
+                            "imagenes": [f"{i:02}.png" for i in range(1, len(estado.galeria) + 1)],
+                            "metodos": list(modelos),
+                        })
+                        print(f"Galeria aprobada: {destino}. Pulsa S para iniciar.", flush=True)
+                        identificador = modelos[getattr(args, "metodo", "histograma")]
+                        tecla = -1
                     else:
-                        estado.descartar()
+                        sesion.accion("cancelar", time.monotonic())
                         tecla = -1
     finally:
         captura.release()
@@ -436,18 +471,23 @@ def main():
     entrada = parser.add_mutually_exclusive_group()
     entrada.add_argument("--camara", type=int, default=0, help="Número V4L2 en Linux")
     entrada.add_argument("--video", help="Comparar HOG a dos resoluciones sobre este vídeo")
-    parser.add_argument("--detector", choices=["hog", "openvino"], default="hog")
+    parser.add_argument("--detector", choices=["hog", "openvino"], default="openvino")
     parser.add_argument("--descargar-modelo", action="store_true")
     parser.add_argument("--hilos", type=int, default=2)
-    parser.add_argument("--fps-proceso", type=float, default=5)
+    parser.add_argument("--fps-proceso", type=float, default=10)
     parser.add_argument("--confianza", type=float, default=.6)
     parser.add_argument("--ancho", type=int, default=640)
     parser.add_argument("--alto", type=int, default=480)
     parser.add_argument("--fps", type=int, default=15)
-    parser.add_argument("--umbral", type=float, default=.45, help="Valor provisional para piloto")
+    parser.add_argument("--metodo", choices=["histograma", "euclidea", "mahalanobis"], default="histograma")
+    parser.add_argument("--umbral", type=float, help="Provisional en vivo; PCA requiere especificarlo")
     parser.add_argument("--hog-umbral", type=float, default=.5, help="Umbral SVM HOG, provisional")
     parser.add_argument("--margen", type=float, default=.08, help="Valor provisional para piloto")
     args = parser.parse_args()
+    if args.umbral is None:
+        if args.metodo != "histograma":
+            parser.error("Indica --umbral calibrado para PCA; las escalas son distintas")
+        args.umbral = .45
     if args.video and args.detector != "hog":
         parser.error("--video conserva la comparacion HOG; OpenVINO se prueba con --camara")
     if args.descargar_modelo and args.detector != "openvino":
@@ -465,7 +505,7 @@ def main():
             comparar_hog(args.video, carpeta, args.hog_umbral)
         else:
             practica(args, carpeta)
-    except (RuntimeError, cv2.error, OSError) as error:
+    except (RuntimeError, ValueError, ImportError, cv2.error, OSError) as error:
         parser.exit(1, f"Error: {error}\n")
     print(f"Resultados locales: {carpeta}")
 

@@ -42,3 +42,7 @@ Antes de construir o modificar este flujo, leer [el protocolo de construcción](
 - Versionar código, guías y resultados agregados. Mantener capturas, metadatos personales, galerías y embeddings dentro de las rutas locales excluidas de Git; comprobar .gitignore antes de añadir archivos. No subir esos datos al repositorio.
 - Documentar configuración, particiones, comprobaciones y limitaciones. No afirmar capturas, entrenamiento ni métricas que no se hayan ejecutado.
 - La documentación no autoriza activar cámaras, capturar personas ni mover hardware; ejecutar esas acciones cuando estén incluidas en el pedido autorizado.
+
+## Piloto de enrolamiento comparable
+
+Antes de cambiar captura, identificacion o zonas, leer [enrolamiento comparable](docs/trabajo/enrolamiento-comparable.md). Usa OpenVINO CPU a 10 FPS, revision humana, acciones comunes de sesion y ordenes simuladas. La comparacion formal usa anotaciones humanas, detecciones compartidas, calibracion separada y evaluacion congelada.

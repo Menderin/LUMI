@@ -98,3 +98,7 @@ Prototipo de banco disponible en [software/panel_movil](../software/panel_movil/
 ## Banco Wi-Fi temporal, protocolo 2
 
 Solo para ensayo Android→ESP: app 0.5.0 usa UDP 8082 con ACK/tickets ESP para canal A; HTTP 8080 entrega estado. Sustituye deadlines estimados de V1. Watchdog 250 ms desde última recepción válida, pulso máximo 2 s y rearme manual. No altera el futuro supervisor ROS ni el enlace USB. Ver [contrato y limitaciones temporales](trabajo/banco-protocolo-v2.md).
+
+## Sesion de percepcion y direccion simulada, 2026-11-20
+
+El NUC mantiene la sesion de enrolamiento. La ventana usa acciones iniciar, confirmar, cancelar, repetir, iniciar_seguimiento y reanudar. Confirmar deja Listo y no inicia seguimiento. La futura app invocara esas acciones sobre el mismo propietario. Las zonas 40-60 % con histeresis producen intenciones visuales; Alineado no autoriza avance ni mide distancia. Ver [flujo y contratos](trabajo/enrolamiento-comparable.md).

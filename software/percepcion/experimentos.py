@@ -59,7 +59,7 @@ def sesion_onnx(path, hilos):
 
 
 class Identificador:
-    def __init__(self, muestras, cfg, base):
+    def __init__(self, muestras, cfg, base, proyeccion=None):
         self.metodo = cfg["metodo"]
         self.alto = cfg.get("alto", 128)
         self.encoder = None
@@ -72,13 +72,21 @@ class Identificador:
             raise ValueError("La galería debe contener entre 1 y 12 muestras")
         vectores = np.stack([self.vector(x) for x in muestras])
         if self.metodo in {"euclidea", "mahalanobis"}:
-            self.media = vectores.mean(axis=0)
-            centrado = vectores - self.media
-            _, _, base_pca = np.linalg.svd(centrado, full_matrices=False)
-            k = min(8, np.linalg.matrix_rank(centrado))
-            if not k:
-                raise ValueError("Galería sin variación suficiente para PCA")
-            self.componentes = base_pca[:k]
+            if proyeccion is None:
+                self.media = vectores.mean(axis=0)
+                centrado = vectores - self.media
+                _, valores, base_pca = np.linalg.svd(centrado, full_matrices=False)
+                tolerancia = valores.max() * max(centrado.shape) * np.finfo(valores.dtype).eps
+                k = min(8, int(np.count_nonzero(valores > tolerancia)))
+                if not k:
+                    raise ValueError("Galería sin variación suficiente para PCA")
+                self.componentes = base_pca[:k]
+            else:
+                if self.alto != proyeccion.alto:
+                    raise ValueError("Resoluciones PCA diferentes")
+                self.media = proyeccion.media.copy()
+                self.componentes = proyeccion.componentes.copy()
+                centrado = vectores - self.media
             vectores = centrado @ self.componentes.T
             if self.metodo == "mahalanobis":
                 from sklearn.covariance import LedoitWolf
@@ -112,6 +120,27 @@ class Identificador:
         if self.metodo == "mahalanobis":
             return float(np.sqrt(np.maximum(0, ((delta @ self.precision)*delta).sum(axis=1))).min())
         return float(np.linalg.norm(delta, axis=1).min())
+
+
+def crear_identificadores(muestras, base, alto=128):
+    from threadpoolctl import threadpool_limits
+    with threadpool_limits(limits=2):
+        euclidea = Identificador(muestras, {"metodo": "euclidea", "alto": alto}, base)
+        return {
+            "histograma": Identificador(muestras, {"metodo": "histograma"}, base),
+            "euclidea": euclidea,
+            "mahalanobis": Identificador(
+                muestras, {"metodo": "mahalanobis", "alto": alto}, base, proyeccion=euclidea),
+        }
+
+
+def guardar_representacion(modelo, ruta):
+    valores = {"metodo": np.array(modelo.metodo), "alto": np.array(modelo.alto),
+               "galeria": modelo.galeria}
+    for clave in ("media", "componentes", "precision"):
+        if hasattr(modelo, clave):
+            valores[clave] = getattr(modelo, clave)
+    np.savez_compressed(ruta, **valores)
 
 
 class Detector:
