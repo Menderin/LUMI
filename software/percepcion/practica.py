@@ -6,7 +6,7 @@ import math
 import platform
 import subprocess
 import time
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime
 from pathlib import Path
 
@@ -99,6 +99,26 @@ def dibujar(frame, cajas, distancias, objetivo, mensaje, detalle):
         cv2.putText(imagen, texto, (6, y), cv2.FONT_HERSHEY_SIMPLEX, .48, (0, 0, 0), 3)
         cv2.putText(imagen, texto, (6, y), cv2.FONT_HERSHEY_SIMPLEX, .48, (255, 255, 255), 1)
     return imagen
+
+
+def mostrar_rendimiento(imagen, procesamiento_ms, iteraciones, cpu_sistema, cpu_proceso):
+    """Panel inferior. Iteraciones incluye espera; procesamiento termina antes del panel."""
+    alto, ancho = imagen.shape[:2]
+    fps = len(iteraciones) / sum(iteraciones) if iteraciones else None
+    ciclo = iteraciones[-1] * 1000 if iteraciones else None
+    fps_texto = f"{fps:.1f}" if fps is not None else "--"
+    ciclo_texto = f"{ciclo:.0f}" if ciclo is not None else "--"
+    textos = [
+        f"Proc: {procesamiento_ms:.0f} ms | Ciclo: {ciclo_texto} ms | FPS: {fps_texto}",
+        f"CPU PC: {cpu_sistema:.0f}% | CPU LUMI: {cpu_proceso:.0f}%",
+    ]
+    escala = min(.7, max(.3, (ancho - 16) / 650))
+    altura_linea = max(22, round(34 * escala / .7))
+    inicio = max(0, alto - altura_linea * 2 - 12)
+    cv2.rectangle(imagen, (0, inicio), (ancho - 1, alto - 1), (20, 20, 20), -1)
+    for i, texto in enumerate(textos):
+        cv2.putText(imagen, texto, (8, inicio + altura_linea * (i + 1)),
+                    cv2.FONT_HERSHEY_SIMPLEX, escala, (255, 255, 255), 2, cv2.LINE_AA)
 
 
 class Video:
@@ -231,6 +251,9 @@ def practica(args, carpeta):
     recursos_log.writerow(["tiempo_s", "cpu_sistema_pct", "cpu_proceso_pct_total",
                           "rss_mib", "disponible_mib", "swap_usada_mib", "temperatura_c"])
     ultimo_recurso = 0.0
+    cpu_sistema = 0.0
+    cpu_proceso = 0.0
+    iteraciones = deque(maxlen=30)
     try:
         formato = foto_parametros(captura)
         print(f"Camara: {formato}. Datos locales: {carpeta}", flush=True)
@@ -260,8 +283,10 @@ def practica(args, carpeta):
                     if hasattr(psutil, "sensors_temperatures"):
                         temperaturas = [t.current for grupo in psutil.sensors_temperatures().values()
                                         for t in grupo if t.current is not None]
+                    cpu_sistema = psutil.cpu_percent()
+                    cpu_proceso = proceso.cpu_percent() / (psutil.cpu_count() or 1)
                     recursos_log.writerow([
-                        inicio, psutil.cpu_percent(), proceso.cpu_percent() / (psutil.cpu_count() or 1),
+                        inicio, cpu_sistema, cpu_proceso,
                         proceso.memory_info().rss / 2**20, memoria.available / 2**20,
                         swap_usada,
                         max(temperaturas) if temperaturas else "",
@@ -310,6 +335,7 @@ def practica(args, carpeta):
                 imagen = dibujar(frame, cajas, distancias, objetivo, mensaje,
                                  f"E enrolar | R reiniciar | V video | Esc   {motivo}")
                 latencia = (time.monotonic() - inicio) * 1000
+                mostrar_rendimiento(imagen, latencia, iteraciones, cpu_sistema, cpu_proceso)
                 tiempos.append(latencia)
                 conteos[motivo] += 1
                 if tecla == ord("v"):
@@ -333,7 +359,9 @@ def practica(args, carpeta):
                 cv2.imshow(VENTANA, imagen)
                 espera_ms = max(1, round((1 / args.fps_proceso - (time.monotonic() - inicio)) * 1000))
                 tecla = cv2.waitKey(espera_ms) & 0xff
-                duracion += time.monotonic() - inicio
+                ciclo = time.monotonic() - inicio
+                iteraciones.append(ciclo)
+                duracion += ciclo
                 if tecla == 27 or not ventana_visible(VENTANA):
                     break
                 if estado.estado == "revision":

@@ -48,3 +48,7 @@ Los AVI usan el menor entre FPS reportado y tope de proceso, pero pueden reprodu
 Se comprobaron la conversion de coordenadas normalizadas a 640x480, rechazo de clases distintas, baja confianza, NaN y cajas invertidas. Pasaron las pruebas existentes de revision, reconocimiento, grabacion y benchmark HOG. La inferencia real con los pesos Intel y las mediciones en el NUC quedan pendientes. El paquete OpenVINO se intenta instalar en un entorno local aislado; esa instalacion no constituye una prueba en el robot.
 
 Tambien paso la prueba de una iteracion completa con camara simulada, CSV de recursos y liberacion de captura. Se tolera ausencia de contadores swap de Windows. Se omitio la prueba que requiere el runtime OpenVINO por no estar instalado al verificar.
+
+## Panel de rendimiento en vivo
+
+Se agrega un panel inferior con Proc (lectura y procesamiento del fotograma actual hasta componer imagen), Ciclo (iteracion anterior completa con grabacion y espera), FPS efectivos sobre las ultimas 30 iteraciones y CPU PC/CPU LUMI actualizadas cada segundo. Ambas CPU se muestran de 0 a 100 % sobre la capacidad total del equipo. El primer fotograma muestra -- para ciclo/FPS. La revision manual del video de enrolamiento queda fuera de las iteraciones. Las metricas del panel no son una medicion de latencia fisica camara-pantalla.
