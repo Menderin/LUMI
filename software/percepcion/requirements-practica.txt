@@ -1,4 +1,4 @@
 # Para la demo gráfica. Usar en un entorno distinto del banco headless.
-opencv-python
+opencv-python>=4.10,<5
 numpy
 psutil

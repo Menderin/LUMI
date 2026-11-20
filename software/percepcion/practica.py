@@ -23,6 +23,11 @@ REPO = Path(__file__).resolve().parents[2]
 
 class DetectorHOG:
     def __init__(self):
+        if not hasattr(cv2, "HOGDescriptor"):
+            raise RuntimeError(
+                f"OpenCV {cv2.__version__} no incluye HOGDescriptor. "
+                "Reinstala opencv-python>=4.10,<5 en el entorno de la practica."
+            )
         self.hog = cv2.HOGDescriptor()
         self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
