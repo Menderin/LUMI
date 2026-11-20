@@ -111,6 +111,8 @@ class Guia:
 
 
 def validar_anotaciones(ruta, split, escenario):
+    if not ruta.exists():
+        raise ValueError("No se guardaron etiquetas. Usa S o Revisar; N solo omite. Retoma con --continuar")
     datos = leer(ruta)
     if datos["split"] != split or datos["escenario"] != escenario or not datos["frames"]:
         raise ValueError(f"Faltan anotaciones revisadas: {ruta}")
@@ -236,7 +238,7 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar):
                 paso_clip = 1 if clip["escenario"] in ("oclusion","cruce") else paso
                 completa = anotador(video,split,clip["escenario"],paso_clip)
                 if completa is False:
-                    raise ValueError("Revision interrumpida. Usa --continuar para retomar")
+                    raise ValueError("Revision incompleta o sin etiquetas. Usa S / Enter / Revisar para etiquetar; N omite. Retoma con --continuar")
                 validar_anotaciones(video.with_suffix(".anotaciones.json"),split,clip["escenario"])
                 videos[split].append(video)
             if not videos[split]:

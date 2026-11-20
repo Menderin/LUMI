@@ -26,7 +26,7 @@ El modo completo requiere un acompanante para distractor y cruces. El modo solo 
 1. Pulsa E o Enrolar y completa la captura de 12 segundos despues de la cuenta regresiva. Aprueba las 20-24 miniaturas y el video con Enter.
 2. La ventana anuncia cada escena. Pulsa N o el boton Paso cuando estes listo. Hay tres segundos para colocarte y luego la grabacion empieza y termina automaticamente. No necesitas pulsar V.
 3. Calibracion contiene frente/perfiles/espalda (10 s), oclusion y reaparicion (10 s), escena vacia (6 s), distractor sin objetivo (8 s) y cruce (10 s). Evaluacion repite las acciones con tomas nuevas. El modo solo contiene las tres primeras escenas en ambas particiones.
-4. Al terminar los clips la camara se libera. Se inicia la revision humana de calibracion. S selecciona un fotograma para revisar, N lo omite y Esc interrumpe. Dibuja TODAS las personas con el raton, Enter entre recuadros y Esc para terminar la seleccion. Luego haz clic en el recuadro del objetivo o pulsa su numero. 0 o el boton inferior indica objetivo ausente. Para escena vacia, S y terminar sin recuadros confirma la ausencia.
+4. Al terminar los clips la camara se libera. Se inicia la revision humana de calibracion. S selecciona un fotograma para revisar, N lo omite y Esc interrumpe. Dibuja TODAS las personas arrastrando el raton; cada recuadro se agrega al soltar. Usa el boton Confirmar o Espacio para terminar la seleccion. Deshacer elimina el ultimo recuadro. Esc cancela la revision actual. Luego haz clic en el recuadro del objetivo o pulsa su numero. 0 o el boton inferior indica objetivo ausente. Para escena vacia, S y el boton Escena vacia (o 0) confirma la ausencia.
 5. Se congelan los parametros de los tres metodos. Luego se revisan las tomas de evaluacion con el mismo procedimiento. No se usan sus etiquetas para ajustar umbrales.
 6. El asistente prepara una cache comun, ejecuta los tres identificadores y repite cada comparacion tres veces. Genera informe.md, comparacion.csv, recomendacion.json y las corridas detalladas. No hace falta lanzar los tres experimentos manualmente.
 
@@ -61,3 +61,15 @@ CPU/RSS del comparador corresponden al trabajo offline. La latencia suma detecci
 Se probo el guion de diez escenas, el modo solo de seis escenas, interrupcion por cambio de galeria, selector grafico de identidad y captura guiada por el punto de entrada de la ventana con camara/reloj simulados. La prueba de analisis usa AVI, galeria de 24 recortes, referencias humanas sinteticas, calibracion separada y dos repeticiones con decisiones equivalentes. La suite local actual tiene 29 pruebas. La validacion con Logitech C925e y personas reales en Ubuntu sigue pendiente.
 
 Referencia de gestion: https://trello.com/c/zU5nasgb
+
+## Revision vacia y controles, 2026-11-20
+
+Se corrige el fallo de archivo ausente al omitir todos los frames. La anotacion crea su archivo de estado al comenzar, sin inventar etiquetas. Si termina vacia el asistente indica revision incompleta y permite --continuar sobre la captura ya completada. Las teclas desconocidas ya no avanzan silenciosamente. Enter y S abren revision. Hay botones Revisar, Omitir y Salir. N inicia una escena durante captura y omite un fotograma durante anotacion; ambos contextos se indican en pantalla.
+
+Pasaron tres regresiones nuevas de archivo vacio, tecla desconocida seguida de Enter y mensaje de archivo ausente. La causa exacta de la captura del usuario no puede confirmarse sin su video; el codigo previo solo escribia el JSON al revisar un frame, de modo que omitir todos o no decodificar frames producia el error observado.
+
+## Confirmacion sin Enter
+
+Se reemplaza cv2.selectROIs por un selector propio. Arrastrar y soltar agrega cada recuadro. Confirmar con clic o Espacio termina la lista; Z deshace; 0 confirma escena vacia; Esc interrumpe sin etiquetar ausencia. La revision de enrolamiento tambien acepta Espacio o clic en Aprobar. Se reconocen codigos Enter adicionales de Qt, conservando Enter como alternativa.
+
+Pasaron 37 pruebas Python locales, incluidas cinco regresiones del selector: arrastre inverso, clic sin teclado, Espacio, vacio frente a cancelar y guardado de etiquetas por el punto de entrada. Falta verificar el comportamiento nativo de teclado y raton en el Ubuntu del NUC. Las capturas anteriores se retoman con --continuar.

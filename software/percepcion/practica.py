@@ -21,7 +21,7 @@ from software.control.direccion_simulada import DireccionSimulada
 from .experimentos import Identificador, recortar, crear_identificadores, guardar_representacion
 
 VENTANA = "LUMI - Vision"
-REVISION = "LUMI - Revision (Enter aprueba, R descarta)"
+REVISION = "LUMI - Revision (Espacio o boton Aprobar)"
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -147,6 +147,8 @@ class Video:
 def normalizar_tecla(codigo):
     if codigo < 0:
         return -1
+    if codigo in (16777220,16777221):
+        return 13
     codigo &= 0xff
     return codigo + 32 if ord("A") <= codigo <= ord("Z") else codigo
 
@@ -189,7 +191,7 @@ def revisar(ruta, muestras, registros=None):
     registros = registros or []
     cola = deque()
     cv2.namedWindow(REVISION, cv2.WINDOW_NORMAL)
-    aviso = "Enter aprueba | R repite | C cancela. Clic en botones tambien."
+    aviso = "Espacio o clic en Aprobar | R repite | C cancela"
     try:
         fps = captura.get(cv2.CAP_PROP_FPS)
         pausa = max(1, round(1000/(fps if fps > 0 else 10)))
@@ -208,14 +210,16 @@ def revisar(ruta, muestras, registros=None):
             lienzo[:480,:640] = cv2.resize(frame,(640,480))
             lienzo[:448,640:] = hoja
             cv2.putText(lienzo,aviso,(8,500),cv2.FONT_HERSHEY_SIMPLEX,.6,(255,255,255),1)
-            zonas = botones(lienzo,[("Aprobar [Enter]",13),("Repetir [R]",ord("r")),
+            zonas = botones(lienzo,[("Aprobar [Espacio]",13),("Repetir [R]",ord("r")),
                                      ("Cancelar [C]",ord("c")),("Salir [Esc]",27)],514)
             cv2.setMouseCallback(REVISION,callback_botones(zonas,cola))
             cv2.imshow(REVISION,lienzo)
             tecla = normalizar_tecla(cv2.waitKey(pausa))
             if cola:
                 tecla = cola.popleft()
-            if tecla in (10,13,ord("r"),ord("c"),27):
+            if tecla in (10,13,32,ord("a")):
+                return 13
+            if tecla in (ord("r"),ord("c"),27):
                 return tecla
             if tecla == ord("s"):
                 aviso = "Primero aprueba con Enter. Luego S inicia en la ventana principal."
