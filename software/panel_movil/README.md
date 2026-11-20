@@ -42,3 +42,12 @@ Banco motores vigente: app 0.5.0 y firmware protocolo 2 deben actualizarse junto
 
 
 App de banco vigente 0.5.1 compatible con firmware V2 ya cargado: prueba de enlace sin motores, indicador de gesto y ACK, solicitud de Wi-Fi de baja latencia. [Diagnóstico y prueba del móvil](../../docs/trabajo/diagnostico-joystick-enlace.md). La referencia 0.5.0 anterior registra el cambio de protocolo.
+
+
+App vigente 0.6.0: [tolerancia acotada de ACK perdidos](../../docs/trabajo/tolerancia-ack-udp.md). Requiere instalar APK nuevo; firmware V2 existente compatible. No ampliar watchdog ni eliminar rearme para resolver pérdida de paquetes.
+
+
+Historial **0.6.1**: [recuperación del canal y tokens retrasados](../../docs/trabajo/recuperacion-canal-datos.md). Actualizar APK, conservar firmware V2. Al volver la Wi-Fi local recupera datos automáticamente, sin rearme ni repetición del gesto anterior. Prueba inicial con fuente apagada.
+
+
+La app de banco vigente es **0.7.0**. Usa [firmware protocolo 3](../../docs/trabajo/banco-protocolo-v3.md).

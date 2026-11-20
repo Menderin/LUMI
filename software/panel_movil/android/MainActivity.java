@@ -21,7 +21,7 @@ public class MainActivity extends Activity {
     private volatile String base;
     private volatile String direccion;
     private volatile boolean activo;
-    private boolean enviando;
+    private volatile boolean enviando;
     private ImageView video;
     private TextView estado, aviso, entradaMando, enlace;
     private Button probarEnlace;
@@ -34,11 +34,16 @@ public class MainActivity extends Activity {
     private final MotorDatagrams motorDatagrams = new MotorDatagrams();
     private volatile boolean espMode, permisoMotores;
     private volatile long controlVersion;
-    private long armPendingUntil;
+    private String lastControlFault=""; // UI thread only.
+    private volatile boolean dataChannelReady,dataProbePending;
+    private long lastDataProbeMs;
     private volatile boolean servidorIdentificado;
     private volatile long connectionVersion;
     private Joystick joystick;
-    private boolean mandoDisponible;
+    private volatile boolean mandoDisponible;
+    private volatile boolean arming;
+    private volatile long maxPulseMs=5000;
+    private final MotionHeartbeat motionHeartbeat=new MotionHeartbeat(android.os.SystemClock::elapsedRealtime);
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
@@ -77,7 +82,7 @@ public class MainActivity extends Activity {
         menu.setPadding(dp(10), dp(6), dp(10), dp(6));
         menu.setBackgroundColor(0xffeef6f2);
         scroll.addView(menu);
-        modoTexto = texto(menu, "Laboratorio · v0.5.2", 16);
+        modoTexto = texto(menu, "Laboratorio · v0.7.0", 16);
         boton(menu, "Elegir Wi-Fi de LUMI").setOnClickListener(v -> {
             detener();
             String pantalla = android.os.Build.VERSION.SDK_INT >= 29
@@ -110,7 +115,11 @@ public class MainActivity extends Activity {
         Button manual = boton(menu, "Control manual  ▾");
         habilitarMotor = boton(menu, "Habilitar canal A (5 s)");
         habilitarMotor.setVisibility(android.view.View.GONE);
-        habilitarMotor.setOnClickListener(v -> enviar("/api/motores", "habilitar", false));
+        habilitarMotor.setOnClickListener(v -> {
+            if(arming || !dataChannelReady) return;
+            arming=true;habilitarMotor.setEnabled(false);
+            enviar("/api/motores","habilitar",false);
+        });
         probarEnlace=boton(menu,"Probar enlace · sin motores");
         probarEnlace.setOnClickListener(v -> probarEnlace());
         probarEnlace.setVisibility(android.view.View.GONE);
@@ -171,6 +180,7 @@ public class MainActivity extends Activity {
         detener();
         ++connectionVersion;
         servidorIdentificado = false;
+        dataChannelReady=false;lastDataProbeMs=0;
         base = destino;
         espMode = false;
         if(destino.equals("http://192.168.4.1:8080")) {
@@ -267,7 +277,7 @@ public class MainActivity extends Activity {
             dx = x * factor;
             dy = y * factor;
             invalidate();
-            String orden = JoystickDirection.classify(x,y,r);
+            String orden = espMode ? JoystickDirection.bank(x,y,r,direccion) : JoystickDirection.classify(x,y,r);
             entradaMando.setText("Gesto: "+orden+" · "+
                 (probandoEnlace?"prueba de enlace":gestoConectado && mandoDisponible?"mando habilitado":"solo visual / deshabilitado"));
             if (!gestoConectado || !mandoDisponible || probandoEnlace) return true;
@@ -298,17 +308,19 @@ public class MainActivity extends Activity {
         @Override public void run() {
             String actual = direccion;
             if (actual == null || !activo || !mandoDisponible) return;
-            if (!enviando) {
-                enviando = true;
-                enviar(espMode ? "/api/motores" : "/api/banco/movimiento", actual, true);
+            if(!enviando) {
+                enviando=true;
+                enviar(espMode?"/api/motores":"/api/banco/movimiento",actual,true);
             }
-            ui.postDelayed(this, espMode ? 50 : 160);
+            // In ESP mode an independent clock publishes; touch events never drive timing.
+            if(!espMode) ui.postDelayed(this,160);
         }
     };
 
     private void detener() {
         ++controlVersion;
         permisoMotores = false;
+        motionHeartbeat.stop();motorSession.endMotion();
         direccion = null;
         ui.removeCallbacks(pulso);
         if (base != null && servidorIdentificado)
@@ -333,43 +345,152 @@ public class MainActivity extends Activity {
                 if ((repetida || (motor && accion.equals("habilitar"))) &&
                         (version != controlVersion || !activo)) return;
                 if (repetida && !accion.equals(direccion)) return;
-                if (motor && !accion.equals("parar") && (accion.equals("habilitar") || motorSession.needsRefresh())) {
-                    JSONObject ping = motorDatagrams.exchange(this,"ping",new JSONObject());
-                    motorSession.update(ping.getJSONObject("banco"),android.os.SystemClock.elapsedRealtime());
-                    // Stop/release may have occurred while the read-only ping was in flight.
-                    if (version != controlVersion || !activo || connection != connectionVersion) return;
+                if(motor && repetida && !permisoMotores) return;
+                if(motor && accion.equals("habilitar")) {
+                    JSONObject ping=motorDatagrams.exchange(this,"ping",new JSONObject());
+                    motorSession.updateReply(ping,android.os.SystemClock.elapsedRealtime());
                 }
-                JSONObject body = motor && !accion.equals("parar") ? motorSession.command() : new JSONObject();
+                if(motor && repetida) {
+                    if(motorSession.needsRefresh()) {
+                        JSONObject fresh=motorDatagrams.exchange(this,"ping",new JSONObject());
+                        motorSession.updateReply(fresh,android.os.SystemClock.elapsedRealtime());
+                        if(!fresh.getJSONObject("banco").optBoolean("habilitado"))
+                            throw new Exception("La ESP está deshabilitada; vuelve a habilitar antes de mover");
+                    }
+                    if(!motionCurrent(equipo,connection,version,accion)) return;
+                    motorSession.beginMotion();
+                    motionHeartbeat.start(maxPulseMs,run -> {
+                        if(!motionCurrent(equipo,connection,version,accion)) { motionHeartbeat.stop();return; }
+                        motorDatagrams.sendMotion(this,accion,motorSession.motionCommand(),
+                            () -> motionCurrent(equipo,connection,version,accion),(reply,error) -> {
+                                if(!motionCurrent(equipo,connection,version,accion)) return;
+                                if(error!=null) { motionFault(error,equipo,connection,version,accion);return; }
+                                try {
+                                    if(motorSession.updateReply(reply,android.os.SystemClock.elapsedRealtime())<0) return;
+                                    if(!motionHeartbeat.confirm(run,reply.getLong("_request_started_ms"))) return;
+                                    ui.post(() -> {
+                                        if(motionCurrent(equipo,connection,version,accion) && aviso.getText().toString().startsWith("Confirmación retrasada")) aviso.setText("");
+                                    });
+                                } catch(Exception failed) { motionFault(failed,equipo,connection,version,accion); }
+                            });
+                        if(motionHeartbeat.delayed(run)) pendingMessage(connection,version,"Confirmación retrasada; canal de datos abierto");
+                    },(run,error) -> motionFault(error,equipo,connection,version,accion));
+                    pendingMessage(connection,version,"Mando periódico activo · envío independiente de respuestas");
+                    return;
+                }
+                if(motor && accion.equals("habilitar") && (version!=controlVersion || !activo || connection!=connectionVersion)) return;
+                JSONObject body=motor && !accion.equals("parar")?motorSession.command(repetida):new JSONObject();
                 long started = android.os.SystemClock.elapsedRealtime();
                 JSONObject respuesta = motor ? motorDatagrams.exchange(this,accion,body)
                     : json(equipo + ruta + "/" + accion, true, body);
                 if (motor && respuesta.optJSONObject("banco") != null &&
                         connection == connectionVersion)
-                    motorSession.update(respuesta.getJSONObject("banco"), started);
+                    motorSession.updateReply(respuesta, started);
+                if(motor && accion.equals("habilitar") && !respuesta.getJSONObject("banco").optBoolean("habilitado"))
+                    throw new Exception("La habilitación no fue aceptada por la ESP");
                 if (!repetida) ui.post(() -> {
                     if (!equipo.equals(base) || connection != connectionVersion) return;
                     if (motor && accion.equals("habilitar") && version == controlVersion && activo) {
                         permisoMotores = true;
-                        armPendingUntil = android.os.SystemClock.elapsedRealtime() + 500;
+                        ++controlVersion;
+                        lastControlFault="";
+                        habilitar(true,"");
                     }
                     aviso.setText(respuesta.optString("mensaje"));
                 });
-            } catch (Exception e) {
-                if (motor) {
-                    try { motorDatagrams.exchange(this,"parar",new JSONObject()); }
-                    catch (Exception ignored) { /* ESP independently expires after 250 ms. */ }
+            } catch(MotorSessionToken.NeedsRefresh freshNeeded) {
+                recoverControl(freshNeeded,motor,equipo,connection,accion);
+            } catch(Exception e) {
+                recoverControl(e,motor,equipo,connection,accion);
+            } finally {
+                if(repetida) enviando=false;
+                if(motor && accion.equals("habilitar")) ui.post(() -> arming=false);
+            }
+        });
+    }
+
+    private boolean motionCurrent(String equipo,long connection,long version,String action) {
+        return activo && permisoMotores && equipo.equals(base) && connection==connectionVersion && version==controlVersion && action.equals(direccion);
+    }
+    private void motionFault(Exception error,String equipo,long connection,long version,String action) {
+        if(!motionCurrent(equipo,connection,version,action)) return;
+        permisoMotores=false;direccion=null;motionHeartbeat.stop();motorSession.endMotion();
+        if(error instanceof MotionHeartbeat.PulseEnded) {
+            ui.post(() -> {
+                if(connection!=connectionVersion || version!=controlVersion) return;
+                detener();habilitar(false,"");aviso.setText("Pulso finalizado. Habilita de nuevo para otro ensayo.");
+            });
+        } else {
+            dataChannelReady=false;
+            if(!ordenes.isShutdown()) ordenes.execute(() -> recoverControl(error,true,equipo,connection,action));
+        }
+    }
+
+    private void pendingMessage(long connection,long version,String message) {
+        ui.post(() -> { if(activo && connection==connectionVersion && version==controlVersion) aviso.setText(message); });
+    }
+
+    // Runs on the ordered network worker. Suspension does not close the data endpoint.
+    private void recoverControl(Exception error,boolean motor,String equipo,long connection,String action) {
+        if(!equipo.equals(base) || connection!=connectionVersion) return;
+        permisoMotores=false;direccion=null;++controlVersion;
+        motionHeartbeat.stop();motorSession.endMotion();
+        dataChannelReady=false;
+        if(error instanceof MotorDatagrams.Rejected) {
+            try { motorSession.updateReply(((MotorDatagrams.Rejected)error).reply,android.os.SystemClock.elapsedRealtime()); }
+            catch(Exception ignored) { }
+        }
+        ui.post(() -> {
+            if(!equipo.equals(base) || connection!=connectionVersion) return;
+            ui.removeCallbacks(pulso);habilitar(false,"");habilitarMotor.setEnabled(false);
+            lastControlFault=detalle(error);
+            aviso.setText("Control suspendido: "+lastControlFault+"\nRecuperando datos; será necesario habilitar de nuevo.");
+        });
+        if(motor) {
+            try {
+                JSONObject stopped=motorDatagrams.exchange(this,"parar",new JSONObject());
+                if(connection==connectionVersion && equipo.equals(base))
+                    motorSession.updateReply(stopped,android.os.SystemClock.elapsedRealtime());
+            } catch(Exception ignored) { /* Firmware watchdog remains independent. */ }
+        }
+    }
+
+    // A read-only probe restores the data channel, never the movement permission.
+    private void recoverDataChannel() { recoverDataChannel(false); }
+
+    private void recoverDataChannel(boolean checkWhenReady) {
+        long now=android.os.SystemClock.elapsedRealtime();
+        if(!espMode || (!checkWhenReady && dataChannelReady) || dataProbePending || permisoMotores || arming || probandoEnlace || !activo || now-lastDataProbeMs<750) return;
+        lastDataProbeMs=now;dataProbePending=true;
+        long connection=connectionVersion;
+        ordenes.execute(() -> {
+            try {
+                if(!activo || connection!=connectionVersion || permisoMotores || arming || probandoEnlace) return;
+                JSONObject reply=motorDatagrams.exchange(this,"ping",new JSONObject());
+                if(connection!=connectionVersion || !activo) return;
+                motorSession.updateReply(reply,android.os.SystemClock.elapsedRealtime());
+                // Local permission is false: stop any unexpectedly armed remote session.
+                if(reply.getJSONObject("banco").optBoolean("habilitado")) {
+                    reply=motorDatagrams.exchange(this,"parar",new JSONObject());
+                    motorSession.updateReply(reply,android.os.SystemClock.elapsedRealtime());
                 }
                 ui.post(() -> {
-                    if (!equipo.equals(base) || connection != connectionVersion) return;
-                    permisoMotores = false;
-                    ++controlVersion;
-                    direccion = null;
-                    habilitar(false, "");
-                    aviso.setText("Error al " + accion + ": " + detalle(e));
+                    if(connection!=connectionVersion || !activo) return;
+                    boolean restored=!dataChannelReady;
+                    dataChannelReady=true;
+                    habilitarMotor.setEnabled(!permisoMotores && !probandoEnlace && !arming);
+                    if(restored) aviso.setText("Canal de datos disponible. Pulsa Habilitar para continuar."+
+                        (lastControlFault.isEmpty()?"":"\nÚltimo corte: "+lastControlFault));
                 });
-            } finally {
-                if (repetida) ui.post(() -> enviando = false);
-            }
+            } catch(Exception error) {
+                dataChannelReady=false;
+                ui.post(() -> {
+                    if(connection==connectionVersion && activo) {
+                        habilitarMotor.setEnabled(false);
+                        aviso.setText("Recuperando canal de datos… "+detalle(error));
+                    }
+                });
+            } finally { dataProbePending=false; }
         });
     }
 
@@ -388,7 +509,7 @@ public class MainActivity extends Activity {
             String failure="";
             try {
                 wifiPower.acquire(this);
-                motorDatagrams.close();
+                // Keep the same data endpoint during the diagnostic too.
                 // Firmware must be disabled before starting this read-only test.
                 for(int i=0;i<12;++i) {
                     if(!activo || connection!=connectionVersion) return;
@@ -397,7 +518,7 @@ public class MainActivity extends Activity {
                         JSONObject result=motorDatagrams.exchange(this,"ping",new JSONObject());
                         JSONObject bank=result.getJSONObject("banco");
                         if(bank.optBoolean("habilitado")) throw new IllegalStateException("La ESP sigue habilitada; pulsa Parar");
-                        motorSession.update(bank,started);
+                        motorSession.updateReply(result,started);
                         stats.add(android.os.SystemClock.elapsedRealtime()-started,bank.getLong("uptime_ms"));
                     } catch(IllegalStateException unsafe) { throw unsafe; }
                     catch(Exception error) { stats.fail();failure=detalle(error); }
@@ -416,7 +537,7 @@ public class MainActivity extends Activity {
                         .setPositiveButton("Cerrar",null)
                         .setNeutralButton("Copiar informe",(dialog,which) -> {
                             android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
-                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("LUMI enlace",summary));
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("LUMI enlace",summary+"\n\nÚltimos eventos de control:\n"+motorDatagrams.report()));
                         }).show();
                     aviso.setText(stats.acceptable()?"Prueba de enlace correcta; habilita para probar el mando.":"Enlace irregular. Copia el informe antes de probar motores.");
                 });
@@ -426,7 +547,7 @@ public class MainActivity extends Activity {
             } finally {
                 probandoEnlace=false;
                 ui.post(() -> {
-                    if(connection==connectionVersion) { probarEnlace.setEnabled(true);habilitarMotor.setEnabled(true); }
+                    if(connection==connectionVersion) { probarEnlace.setEnabled(true);habilitarMotor.setEnabled(dataChannelReady); }
                 });
             }
         });
@@ -456,28 +577,33 @@ public class MainActivity extends Activity {
                 return;
             }
             lectura.execute(() -> {
+                long polledVersion=controlVersion;
                 try {
                     long started = android.os.SystemClock.elapsedRealtime();
                     JSONObject s = json(equipo + "/api/estado", false);
                     if (connection != connectionVersion) return;
                     JSONObject banco = s.optJSONObject("banco");
                     boolean motor = s.optString("modo").equals("motores_esp");
+                    if(motor && polledVersion!=controlVersion) return;
                     int sessionUpdate = motor && banco != null ? motorSession.update(banco, started) : 0;
                     if (sessionUpdate < 0) return;
                     Bitmap imagen = s.optBoolean("camara") ? foto(equipo + "/foto.jpg") : null;
                     ui.post(() -> {
                         if (!activo || !equipo.equals(base) || connection != connectionVersion) return;
+                        if(motor && polledVersion!=controlVersion) return;
                         servidorIdentificado = banco != null;
                         if (sessionUpdate > 0) {
+                            motionHeartbeat.stop();
                             permisoMotores = false;
                             direccion = null;
                             ++controlVersion;
                             aviso.setText("La ESP se reinició. Habilita de nuevo con la fuente revisada.");
                         }
                         espMode = motor;
+                        if(motor) recoverDataChannel();
                         probarEnlace.setVisibility(motor?android.view.View.VISIBLE:android.view.View.GONE);
                         titulo.setText(motor ? "LUMI  ·  BANCO DE MOTORES" : "LUMI  ·  CÁMARA DE BANCO");
-                        modoTexto.setText(motor ? "ESP · canal A · v0.5.2" : "Simulación · v0.5.2");
+                        modoTexto.setText(motor ? "ESP · canal A · v0.7.0" : "Simulación · v0.7.0");
                         habilitarMotor.setVisibility(motor && joystick.getVisibility() == android.view.View.VISIBLE
                             ? android.view.View.VISIBLE : android.view.View.GONE);
                         enrolar.setVisibility(motor ? android.view.View.GONE : android.view.View.VISIBLE);
@@ -492,9 +618,9 @@ public class MainActivity extends Activity {
                             estado.setText("Servidor conectado · actualizar servidor para habilitar el banco");
                             habilitar(false, "");
                         } else if (motor) {
+                            maxPulseMs=Math.max(1,Math.min(5000,banco.optLong("max_pulso_ms",5000)));
                             boolean armado = banco.optBoolean("habilitado");
-                            if (!armado && android.os.SystemClock.elapsedRealtime() > armPendingUntil)
-                                permisoMotores = false;
+                            if(!armado) permisoMotores=false;
                             estado.setText((banco.optBoolean("dry_run") ? "Prueba lógica · salidas bloqueadas" : "Control real · canal A")
                                 + "\n" + (armado ? "Habilitado" : "Deshabilitado")
                                 + " · PWM ordenado: " + banco.optInt("pwm_ordenado") + "%"
@@ -502,10 +628,10 @@ public class MainActivity extends Activity {
                                 + " · " + banco.optString("ultimo_rechazo", "")
                                 + "\nSin medición de corriente ni velocidad");
                             habilitar(permisoMotores && armado, "");
-                            habilitarMotor.setEnabled(!permisoMotores && !probandoEnlace);
+                            habilitarMotor.setEnabled(dataChannelReady && !permisoMotores && !probandoEnlace && !arming);
                         probarEnlace.setEnabled(!probandoEnlace);
                         enlace.setText(probandoEnlace?"Midiendo enlace sin motores…":wifiPower.status()+"\n"+motorDatagrams.trace());
-                            if (aviso.getText().toString().equals("Conectando…")) aviso.setText("Conectado. Habilita antes de usar el mando.");
+                            if(aviso.getText().toString().equals("Conectando…")) aviso.setText(dataChannelReady?"Datos disponibles. Habilita antes de usar el mando.":"Comprobando canal de datos…");
                         } else {
                             String fase = banco.optString("enrolamiento");
                             long segundos = banco.optLong("segundos");
@@ -519,12 +645,21 @@ public class MainActivity extends Activity {
                     });
                 } catch (Exception e) {
                     ui.post(() -> {
-                        if (!equipo.equals(base) || connection != connectionVersion) return;
+                        if(!activo || !equipo.equals(base) || connection!=connectionVersion || polledVersion!=controlVersion) return;
+                        // HTTP is telemetry. The UDP sender and firmware independently enforce loss of control.
+                        if(espMode) {
+                            enlace.setText("Telemetría HTTP temporalmente no disponible · "+motorDatagrams.trace());
+                            recoverDataChannel(true);
+                            return;
+                        }
                         permisoMotores = false;
                         ++controlVersion;
                         direccion = null;
-                        estado.setText("Sin conexión · estado del robot desconocido");
-                        aviso.setText("No se pudo leer la ESP: " + detalle(e));
+                        dataChannelReady=false;
+                        motionHeartbeat.stop();motorSession.endMotion();
+                        habilitarMotor.setEnabled(false);
+                        estado.setText("Esperando telemetría HTTP");
+                        aviso.setText("Esperando recuperar datos: "+detalle(e));
                         video.setImageDrawable(null);
                         habilitar(false, "");
                     });
@@ -624,6 +759,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onPause() {
         activo = false;
+        dataChannelReady=false;
         ui.removeCallbacks(consultar);
         joystick.centrar();
         detener();
@@ -634,6 +770,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        motionHeartbeat.close();
         lectura.shutdownNow();
         ordenes.execute(() -> motorDatagrams.close());
         ordenes.shutdown();

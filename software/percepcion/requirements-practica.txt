@@ -1,0 +1,4 @@
+# Para la demo gráfica. Usar en un entorno distinto del banco headless.
+opencv-python
+numpy
+psutil

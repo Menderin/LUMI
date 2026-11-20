@@ -3,15 +3,15 @@
 #include <cstring>
 
 // Candidate for the next supervised test. Do not infer a current limit from PWM.
-constexpr int BANK_PWM_PERCENT = 20;
+constexpr int BANK_PWM_PERCENT = 60;
 constexpr int BANK_DUTY = BANK_PWM_PERCENT * 10;
-constexpr uint32_t BANK_MAX_PULSE_MS = 500;
+constexpr uint32_t BANK_MAX_PULSE_MS = 5000;
 // Only the ESP monotonic clock decides ticket age and watchdog expiry.
 struct BancoMotor {
     struct Ticket { uint32_t value = 0, epoch = 0, issued = 0; };
     Ticket tickets[16];
     uint32_t boot, epoch = 1, seq = 0, expires = 0, pulse_start = 0;
-    uint32_t next_ticket, ticket_slot = 0;
+    uint32_t next_ticket, ticket_slot = 0, motion_ticket = 0;
     bool armed = false, pulsing = false;
     int duty = 0;
     const char* fault = "inicio";
@@ -31,7 +31,7 @@ struct BancoMotor {
     void stop(const char* reason, bool explicit_stop = false) {
         bool active = armed || pulsing;
         if (active || explicit_stop) ++epoch;
-        armed = pulsing = false; duty = 0;
+        armed = pulsing = false; duty = 0; motion_ticket = 0;
         if (active || !strcmp(fault,"inicio") || !strcmp(fault,"ninguno")) fault = reason;
     }
     void tick(uint32_t now) {
@@ -43,17 +43,23 @@ struct BancoMotor {
                  uint32_t ticket, int mode, int target) {
         tick(now);
         gap_ms = now - last_rx; last_rx = now;
-        if (id != boot || lease != epoch || sequence <= seq) {
-            rejection = id != boot ? "reinicio_o_dispositivo" :
-                lease != epoch ? "rearme_antiguo" : "secuencia_repetida";
-            stop(rejection); return false;
+        if (id != boot || lease != epoch) {
+            rejection = id != boot ? "reinicio_o_dispositivo" : "rearme_antiguo";
+            // Late datagrams from a previous gesture must not stop the current one.
+            return false;
+        }
+        if (sequence <= seq) {
+            rejection = "secuencia_ignorada";
+            return true; // No actuation, no watchdog renewal, no rearm.
         }
         seq = sequence;
         if (mode < 1 || mode > 2 || (mode == 1 && target != 0) ||
             (mode == 2 && target != BANK_DUTY && target != -BANK_DUTY)) {
             rejection = "orden_invalida"; stop(rejection); return false;
         }
-        if (!fresh_ticket(now,ticket,mode == 1 ? 1000 : 250)) {
+        bool valid_ticket = mode == 1 ? fresh_ticket(now,ticket,1000) :
+            pulsing ? ticket == motion_ticket : fresh_ticket(now,ticket,250);
+        if (!valid_ticket) {
             rejection = "token_vencido"; stop(rejection); return false;
         }
         if (mode == 1) {
@@ -62,7 +68,7 @@ struct BancoMotor {
         }
         if (!armed) { rejection = "no_habilitado"; return false; }
         if (duty * target < 0) { rejection = "parar_antes_de_invertir"; stop(rejection); return false; }
-        if (!pulsing) { pulsing = true; pulse_start = now; }
+        if (!pulsing) { pulsing = true; pulse_start = now; motion_ticket = ticket; }
         duty = target; expires = now + 250; fault = rejection = "ninguno"; return true;
     }
 };
@@ -74,7 +80,6 @@ inline bool banco_selftest() {
     if (b.command(0,42,1,1,t,2,BANK_DUTY) || b.duty) return false;
     if (!b.command(10,42,1,2,t,1,0) || b.duty) return false;
     if (!b.command(20,42,1,3,t,2,BANK_DUTY)) return false;
-    t = b.issue_ticket(20);
     if (!b.command(125,42,1,4,t,2,BANK_DUTY)) return false;
     b.tick(374); if (!b.armed) return false;
     b.tick(375); if (b.armed || b.duty || b.epoch != 2) return false;
@@ -87,14 +92,14 @@ inline bool banco_selftest() {
     BancoMotor gap(4); t=gap.issue_ticket(0);
     if (!gap.command(0,4,1,1,t,1,0)) return false;
     if (!gap.command(10,4,1,2,t,2,BANK_DUTY)) return false;
-    t=gap.issue_ticket(10);
     if (!gap.command(161,4,1,3,t,2,BANK_DUTY)) return false;
     gap.tick(410); if (!gap.armed) return false;
     gap.tick(411); if (gap.armed || strcmp(gap.fault,"caducidad")) return false;
     BancoMotor pulse(9);
     if (!pulse.command(0,9,1,1,pulse.issue_ticket(0),1,0)) return false;
+    uint32_t fixed_ticket=pulse.issue_ticket(0);
     for (uint32_t i=0;i<BANK_MAX_PULSE_MS/100;++i)
-        if (!pulse.command(i*100,9,1,i+2,pulse.issue_ticket(i*100),2,BANK_DUTY)) return false;
+        if (!pulse.command(i*100,9,1,i+2,fixed_ticket,2,BANK_DUTY)) return false;
     pulse.tick(BANK_MAX_PULSE_MS); if (pulse.armed || pulse.duty) return false;
     BancoMotor stale(5);
     t = stale.issue_ticket(0);
@@ -108,11 +113,19 @@ inline bool banco_selftest() {
     t = replay.issue_ticket(0);
     if (!replay.command(0,6,1,1,t,1,0)) return false;
     if (!replay.command(10,6,1,2,t,2,BANK_DUTY)) return false;
-    if (replay.command(20,6,1,2,t,2,BANK_DUTY) || replay.armed) return false;
+    uint32_t unchanged=replay.expires;
+    if (!replay.command(20,6,1,2,t,2,-BANK_DUTY) || !replay.armed || replay.duty!=BANK_DUTY || replay.expires!=unchanged) return false;
+    if (replay.command(30,6,0,999,t,2,BANK_DUTY) || !replay.armed || replay.expires!=unchanged) return false;
+    replay.tick(260);if(replay.armed || replay.motion_ticket) return false;
+    if(replay.command(270,6,1,3,t,2,BANK_DUTY) || replay.armed) return false;
     BancoMotor wrap(7); t = wrap.issue_ticket(UINT32_MAX-100);
     if (!wrap.command(UINT32_MAX-90,7,1,1,t,1,0)) return false;
     if (!wrap.command(20,7,1,2,t,2,BANK_DUTY)) return false;
     wrap.tick(270); if (wrap.armed) return false;
+    BancoMotor lease(10);t=lease.issue_ticket(0);
+    if(!lease.command(0,10,1,1,t,1,0) || !lease.command(10,10,1,2,t,2,BANK_DUTY)) return false;
+    uint32_t another=lease.issue_ticket(20);
+    if(lease.command(30,10,1,3,another,2,BANK_DUTY) || lease.armed) return false;
     BancoMotor invalid(8); t=invalid.issue_ticket(0);
     if (!invalid.command(0,8,1,1,t,1,0)) return false;
     if (invalid.command(10,8,1,2,t,2,BANK_DUTY+1) || invalid.armed) return false;

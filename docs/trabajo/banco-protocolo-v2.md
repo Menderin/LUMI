@@ -1,8 +1,26 @@
 # Corrección del control de banco 0.5.0 (protocolo 2)
 
+Historial del protocolo 2. Consultar [protocolo vigente 3](banco-protocolo-v3.md).
+
 Fecha: 2026-11-19. Solo banco Android → ESP; la arquitectura final Raspberry/ROS 2 → USB → ESP no cambia.
 
-## Perfil físico vigente: PWM 20 % y corte a 500 ms
+## App vigente 0.6.1: recuperación persistente
+
+Timeout y rechazo no cierran el endpoint UDP. Recupera datos por sondeo y PING, sin rearmar ni repetir gestos. Tokens usan RTT completo desde el envío original; refresco activo usa PING de ventana corta. Cambio real de red/socket inválido recrea ruta automáticamente. [Implementación y pruebas](recuperacion-canal-datos.md). Firmware y protocolo V2 no se modifican.
+
+## App 0.6.0: ACK pendientes durante movimiento
+
+Se sustituye el timeout fatal por paquete por una ventana acotada de confirmaciones recientes. No se cambia contrato V2, PWM, duración máxima o watchdog del firmware. Un ACK aislado perdido no termina sesión; rechazo explícito, silencio prolongado o agotamiento de ventana sí requieren nuevo rearme. Los tiempos 180 ms de versiones inferiores son historial para movimiento. [Detalles y comprobaciones](tolerancia-ack-udp.md).
+
+## Perfil físico vigente: PWM 60 % y máximo 5 s
+
+Se amplía máximo de pulso por petición expresa a 5000 ms, manteniendo watchdog de 250 ms desde recepción válida, rearme, tickets y parada al soltar. [Ensayo y comprobaciones](ensayo-pwm60-5s.md). Las cifras de perfiles inferiores se conservan como historial. No se valida corriente ni temperatura del módulo.
+
+## Historial: PWM 60 % y corte a 500 ms
+
+Cambio posterior por petición expresa del usuario. Ver [ensayo 60 %, condiciones y comprobaciones](ensayo-pwm60.md). App 0.5.2 muestra el límite del firmware sin recompilar; protocolo V2 no cambia. No certifica capacidad eléctrica del L298.
+
+## Historial: PWM 20 % y corte a 500 ms
 
 Perfil de ensayo solicitado después de pitido sin giro a 15 %. Firmware cargado y arranque verificado; no hay movimiento físico comprobado por el agente. Consultar [ensayo y limitaciones eléctricas](ensayo-pwm20.md). App 0.5.2 lee estos límites; 0.5.1 conserva compatibilidad de protocolo. Las cifras 15 %/2 s inferiores describen el perfil previo.
 

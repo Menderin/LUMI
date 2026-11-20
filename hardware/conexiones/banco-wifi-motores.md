@@ -2,7 +2,27 @@
 
 Este modo conecta Android directamente a la ESP32-S3 para laboratorio. El sistema final conserva Raspberry con ROS 2 y USB hacia la ESP. En este modo no hay cámara, IA, enrolamiento ni mando del canal B.
 
-## Perfil vigente: PWM 20 %, corte a 500 ms
+## App vigente: 0.7.0 con firmware protocolo 3
+
+Instalar el APK 0.7.0 y usar firmware V3. Ver [contrato y pruebas](../../docs/trabajo/banco-protocolo-v3.md).
+
+## Historial: app 0.6.1, recuperación del canal de datos
+
+Instalar APK nuevo; firmware no cambia. Endpoint se conserva ante timeout/NACK y se vuelve a enlazar si cambia la red o falla el socket. Reconectar datos no rearma motores. Corrección de frescura de tokens con RTT original y PING de refresco. [Guía de verificación](../../docs/trabajo/recuperacion-canal-datos.md).
+
+## Historial app 0.6.0: tolerancia acotada de ACK
+
+Instalar APK 0.6.0 para esta corrección; no requiere cambiar firmware. Durante el mando, una espera sin ACK no cierra socket ni manda parada inmediata. Envía órdenes nuevas, acepta ACK recientes y detiene tras cuatro esperas fallidas o 200 ms sin confirmación. Los rechazos explícitos siguen deteniendo; no hay rearme automático. [Contrato y pruebas](../../docs/trabajo/tolerancia-ack-udp.md).
+
+## Perfil vigente: PWM 60 %, máximo 5 s
+
+Última petición: máximo 5000 ms mientras se mantiene el mando y llegan órdenes válidas. Soltar/cancelar, watchdog y rearme se conservan; no son cinco segundos de movimiento autónomo. Fuente apagada confirmada para carga; arranque con autopruebas correctas y PWM cero. [Ensayo y límites](../../docs/trabajo/ensayo-pwm60-5s.md). [Drivers candidatos](../drivers-mayor-corriente.md).
+
+## Historial: PWM 60 %, corte a 500 ms
+
+Actualización solicitada expresamente por usuario: [perfil 60 % y evidencia](../../docs/trabajo/ensayo-pwm60.md). Fuente Pro’sKit TE-5305 a 12 V, limitación aún sin verificar. No hay validación eléctrica ni prueba de movimiento por el agente. App 0.5.2 muestra límites recibidos sin actualización adicional.
+
+## Historial: PWM 20 %, corte a 500 ms
 
 Usuario solicita ensayo con dos motores OUT1–OUT2. Se cambió el perfil de 15 %/2 s a 20 %/0,5 s; no es una aprobación de capacidad eléctrica del L298. Fuente declarada 12 V/CV y límite no verificado. [Condiciones, cambios y evidencia](../../docs/trabajo/ensayo-pwm20.md). Firmware cargado y arranque sin movimiento verificado. App 0.5.2 muestra límites publicados; 0.5.1 es compatible, pero su texto 2 s quedó histórico.
 
@@ -20,7 +40,7 @@ Antes del mando, ejecutar en la app **Probar enlace · sin motores**. La lectura
 - En la app: Elegir Wi-Fi → LUMI-BANCO → Conectar ESP · motores → Control manual → Habilitar canal A (5 s).
 - Desplazar el joystick hacia arriba/abajo. Los movimientos laterales no se permiten con este cableado. Soltar detiene y deshabilita. Para otro ensayo, habilitar de nuevo. Tras detenerse por límite o fallo, soltar el dedo antes de rearmar.
 
-El PWM fijo es 20%, los pulsos duran como máximo 0,5 s y el watchdog vence a los 250 ms desde la última orden válida recibida. La espera inicial de rearme es de 5 s. No hay velocidad ni corriente medidas. El PWM no limita la corriente de arranque ni garantiza que el L298N soporte los motores. No elevar la fuente a 5 A ni aumentar PWM para superar una rueda que no arranca sin revisar el dimensionamiento.
+El PWM fijo es 60%, los pulsos duran como máximo 5 s y el watchdog vence a los 250 ms desde la última orden válida recibida. La espera inicial de rearme es de 5 s. No hay velocidad ni corriente medidas. El PWM no limita la corriente de arranque ni garantiza que el L298N soporte los motores. No elevar la fuente a 5 A ni aumentar PWM para superar una rueda que no arranca sin revisar el dimensionamiento.
 
 ## Cableado y procedimiento
 

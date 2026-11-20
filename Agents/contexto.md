@@ -30,3 +30,7 @@ Consultar docs/decisiones.md, docs/plan-arquitectura-raspberry-esp.md y docs/vid
 
 
 Banco temporal vigente 0.5.0: el control de la app usa UDP 8082 con ACK y tickets emitidos por ESP; HTTP 8080 es para estado. No estimar reloj de ESP en Android. Firmware cargado con autopruebas correctas y PWM cero; mando del teléfono pendiente de validar. [Contrato V2](../docs/trabajo/banco-protocolo-v2.md).
+
+## Plataforma y prioridad vigentes, 2026-11-20
+
+El usuario confirma NUC con código declarado RNUCC11PAHi30Z01 como computador oficial, en reemplazo de Raspberry. Ubuntu Desktop existente debe conservarse junto con cuentas y archivos. Prioridad actual cámara, captura, enrolamiento y reconocimiento. Ver D-30 en docs/decisiones.md. La versión de Ubuntu, RAM, almacenamiento e interfaz de cámara deben verificarse en equipo. La ruta final pasa por NUC/ROS 2 y USB hacia ESP.

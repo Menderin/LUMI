@@ -17,7 +17,7 @@ class Enrolamiento:
             raise ValueError("El mínimo debe estar entre 1 y 12")
 
     def actualizar(self, ahora, *, pulsacion=False, objetivo=False,
-                   personas=0, recorte=None, cobertura=False):
+                   personas=0, recorte=None, cobertura=False, pedir_revision=False):
         """Tiempo monotónico, pulsación por flanco y recorte ya validado.
 
         objetivo indica coincidencia inequívoca, vigente y verificada.
@@ -25,12 +25,15 @@ class Enrolamiento:
         """
         if self.estado == "enrolando":
             if ahora - self._inicio >= 10:
-                if cobertura and len(self._muestras) >= self.minimo:
+                if pedir_revision and len(self._muestras) >= self.minimo:
+                    self.estado = "revision"
+                elif cobertura and len(self._muestras) >= self.minimo:
                     self.galeria = tuple(self._muestras)
                     self.estado = "listo"
                 else:
                     self.estado = "fallo"
-                self._muestras.clear()
+                if self.estado != "revision":
+                    self._muestras.clear()
                 self._inicio = ahora
             elif (personas == 1 and recorte is not None
                   and len(self._muestras) < 12 and ahora - self._ultima >= 0.8):
@@ -45,9 +48,27 @@ class Enrolamiento:
         elif self.estado == "siguiendo":
             if not objetivo:
                 self.estado = "perdido"
-        elif pulsacion and objetivo:
+        elif self.estado in ("listo", "perdido") and pulsacion and objetivo:
             self.estado = "siguiendo"
         return self.estado == "siguiendo" and objetivo
+
+    @property
+    def muestras(self):
+        return tuple(self._muestras)
+
+    def confirmar_revision(self, ahora):
+        if self.estado != "revision":
+            return False
+        self.galeria = self.muestras
+        self._muestras.clear()
+        self.estado = "listo"
+        self._inicio = ahora
+        return True
+
+    def descartar(self):
+        self._muestras.clear()
+        self.galeria = ()
+        self.estado = "espera"
 
     def leds(self, ahora):
         """Devuelve (verde, rojo, ámbar)."""

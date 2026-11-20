@@ -37,6 +37,11 @@ public final class JoystickLinkTest {
         check(JoystickDirection.classify(0,-25,100).equals("adelante"));
         check(JoystickDirection.classify(Float.NaN,0,100).equals("parar"));
         check(JoystickDirection.classify(0,-100,0).equals("parar"));
+        check(JoystickDirection.bank(0,-30,100,null).equals("parar"));
+        check(JoystickDirection.bank(0,-30,100,"adelante").equals("adelante"));
+        check(JoystickDirection.bank(51,-50,100,"adelante").equals("adelante"));
+        check(JoystickDirection.bank(80,-30,100,"adelante").equals("derecha"));
+        check(JoystickDirection.bank(0,50,100,"adelante").equals("atras"));
         LinkProbeStats stable=new LinkProbeStats();
         for(int i=0;i<12;++i) stable.add(5,i*50);
         check(stable.acceptable());

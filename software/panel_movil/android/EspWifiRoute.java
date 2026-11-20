@@ -24,6 +24,7 @@ final class EspWifiRoute {
     static void bind(Context context, java.net.DatagramSocket socket) throws IOException {
         find(context).bindSocket(socket);
     }
+    static Network current(Context context) throws IOException { return find(context); }
     private static Network find(Context context) throws IOException {
         ConnectivityManager manager = (ConnectivityManager)
                 context.getSystemService(Context.CONNECTIVITY_SERVICE);

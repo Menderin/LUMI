@@ -94,3 +94,40 @@ APK 0.5.1/código 10 compilado y firmado. SHA256 6B6CCD81F087A1FA1665BA957FB4E01
 Usuario informó pitido sin giro con dos motores a 15 %, fuente a 12 V/CV e indicador 0,5 A; el límite ajustado no quedó verificado. Solicitó mantener ambos motores pese a recomendación de aislar uno. Se preparó ensayo breve 20 % con corte 500 ms, sin aumento automático ni eliminación del rearme/watchdog. Fuente apagada confirmada antes de carga. [Registro y límites](ensayo-pwm20.md).
 
 Firmware compilado, cargado con hashes verificados y autopruebas correctas. USB confirmó pwm_limit=20, max_pulse_ms=500, desarmado y PWM cero en cuatro estados. Solo lectura por herramientas, sin ensayo físico de movimiento. APK 0.5.2/código 11 firmado muestra valores publicados por ESP; 0.5.1 es compatible pero conserva texto antiguo de 2 s. Evidencia local en datos/procesados/base-wifi/2026-11-19/pwm20-500ms/. Pendiente resultado del pulso por usuario.
+
+## Identificación de fuente y solicitud de 60 %
+
+Usuario informa Pro’sKit TE-5305, 0–30 V / 0–5 A. Manual encontrado para variante TE-5305B; verificar coincidencia de controles. Corriente observada a 20 %: 0,7 A, a 12 V/CV, sin límite ajustado verificado. [Referencia y preparación del ajuste](fuente-proskit.md). No se cargó 60 %; perfil vigente 20 %/500 ms. No se enviaron órdenes físicas.
+
+
+## Perfil PWM 60 % / 500 ms
+
+Solicitud expresa del usuario después de informar fuente Pro’sKit TE-5305 y falta de carga para verificar limitación. Se conserva pareja OUT1–OUT2 y límites de parada; no se valida capacidad eléctrica. Fuente apagada confirmada antes de carga. Firmware compilado/cargado, autopruebas y arranque detenidos verificados por USB con pwm_limit=60 y max_pulse_ms=500. [Registro completo](ensayo-pwm60.md). App actual compatible; no se mandó movimiento desde herramientas.
+
+
+## Perfil PWM 60 % / 5 s y drivers alternativos
+
+Petición expresa del usuario, posterior a funcionamiento/pico de fuente 4 A informado. Máximo de pulso sube 500→5000 ms, sin cambios de watchdog, rearme, PWM o canal B. Fuente apagada confirmada; firmware compilado/cargado con hashes correctos y cuatro estados USB desarmados/PWM cero con max_pulse_ms=5000. Sin órdenes físicas desde herramientas. [Ensayo y evidencia](ensayo-pwm60-5s.md); [comparación de drivers](../../hardware/drivers-mayor-corriente.md). App actual compatible; perfil real pendiente de prueba del usuario.
+
+
+## App 0.6.0: tolerar ACK perdido sin cortar al primer timeout
+
+Usuario reporta que funciona pero se corta por Sin ACK UDP de adelante #418 en 180 ms; no percibe sobrecalentamiento por ahora (sin medición térmica). Se corrige tratamiento fatal de cada timeout: ventana de ACK recientes, solicitudes nuevas cada ciclo, mismo socket durante pérdidas aisladas y aceptación de confirmaciones retrasadas. No se amplía watchdog ESP ni se rearma automáticamente. [Contrato y evidencia](tolerancia-ack-udp.md).
+
+Pruebas con sockets UDP loopback: pérdida de uno/dos ACK, demora de 70 ms, blackout total, mismo socket, IDs nuevos sin retransmisión y fin acotado. Regresiones anteriores correctas. APK 0.6.0/código 12 firmado. Firmware permanece 60 %/5 s y watchdog 250 ms desde recepción válida; no se flasheó ni se envió movimiento. Prueba real del móvil pendiente.
+
+## Token vencido tras ACK retrasado y esquema de cuatro motores
+
+Usuario reporta token_vencido/rearme_antiguo e intervalo 2 ms; USB confirmó esa causa, epoch 55, seq 470, gap 91 ms, desarmado y PWM cero. Se identificó que la sesión Android cuenta frescura desde recepción sin descontar tránsito, pese a admitir ACK retrasados. No se modificó firmware ni se entrega otro APK en esta revisión; corrección pendiente, sin rearme automático. Se conserva arquitectura final Wi-Fi móvil–Raspberry y USB Raspberry–ESP. [Esquema completo, referencias OUT3/OUT4 y GPIO](../../hardware/conexiones/cuatro-motores-preparacion.md). Canal B sigue apagado; el esquema no valida capacidad de L298 ni fuente de 5 A para cuatro motores.
+
+
+## App 0.6.1: recuperación de datos y tokens retrasados
+
+Usuario prioriza bugs de app y recuperar conexión sin cerrar canal. Se mantiene endpoint ante timeout/NACK y se recrea automáticamente solo por SocketException real o cambio de Network. Tras fallo, sondeo HTTP y PING UDP recuperan datos/estado, sin rearme ni repetición de gesto. Tokens descuentan RTT completo desde envío original y solicitan refresco de lectura cuando no hay margen. [Contrato, pruebas y límites](recuperacion-canal-datos.md).
+
+Pruebas de endpoint real con UDP loopback, frescura de tokens, ACK y joystick correctas; APK 0.6.1/código 13 firmado. SHA256 CD2467F978E7852DC721910FE993720BF6CC25C828211DBD1736A6FF641D0FB3. Sin actualización de firmware, ADB ni órdenes físicas desde herramientas. Firmware conserva 60 %/5 s, watchdog 250 ms y B apagado. Móvil/roaming Android real pendientes. Logs locales en datos/procesados/base-wifi/2026-11-19/app-0.6.1/.
+
+
+## Banco 0.7.0
+
+Se completó la integración de [protocolo 3](banco-protocolo-v3.md) y se corrigieron cortes espurios por consulta de estado y desviación del joystick. Validación en el móvil pendiente.

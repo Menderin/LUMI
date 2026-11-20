@@ -12,7 +12,7 @@ Este archivo es un índice: cargar las guías relevantes según el trabajo, sin 
 | Datos y enrolamiento | Ver la sección específica de datos y enrolamiento de este archivo |
 | Plan de percepción acordado | [Dataset, experimentos y estados del robot](docs/plan-percepcion.md) |
 | IA y experimentos | [Investigación de IA](Agents/investigacion-ia.md), [evaluación de IA](docs/evaluacion-ia.md) |
-| Banco Wi-Fi de motores y diagnóstico de la app | [Conexión y límites](hardware/conexiones/banco-wifi-motores.md), [evidencia y fallos](docs/trabajo/banco-wifi-motores.md), [contrato vigente V2](docs/trabajo/banco-protocolo-v2.md), [diagnóstico de joystick/enlace](docs/trabajo/diagnostico-joystick-enlace.md) |
+| Banco Wi-Fi de motores y diagnóstico de la app | [Conexión y límites](hardware/conexiones/banco-wifi-motores.md), [evidencia y fallos](docs/trabajo/banco-wifi-motores.md), [contrato vigente V3](docs/trabajo/banco-protocolo-v3.md), [diagnóstico de joystick/enlace](docs/trabajo/diagnostico-joystick-enlace.md), [tolerancia de ACK](docs/trabajo/tolerancia-ack-udp.md), [recuperación de datos vigente](docs/trabajo/recuperacion-canal-datos.md) |
 | Motores, sensores y firmware | [Hardware y seguridad](Agents/hardware-y-seguridad.md), [componentes](hardware/componentes.md) |
 | Ramas, commits y colaboración | [Guía de Git y ramas](Agents/git-y-ramas.md), propuesta para revisión del equipo |
 | Verificar o entregar | [Pruebas](Agents/pruebas.md), [protocolo preliminar](docs/validacion/protocolo-preliminar.md) |

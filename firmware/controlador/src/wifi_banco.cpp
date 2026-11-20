@@ -81,7 +81,7 @@ static void snapshot(char* message, size_t size, bool ok, uint32_t request = 0) 
     const char* movement = bank.duty > 0 ? "adelante" : bank.duty < 0 ? "atras" : "parar";
     snprintf(message, size,
         "{\"ok\":%s,\"request\":%lu,\"mensaje\":\"%s\",\"camara\":false,\"modo\":\"motores_esp\",\"banco\":{\"enrolamiento\":\"no_disponible\","
-        "\"protocolo_control\":2,\"ticket\":%lu,\"movimiento\":\"%s\",\"boot\":%lu,\"epoch\":%lu,\"seq\":%lu,\"uptime_ms\":%lu,"
+        "\"protocolo_control\":3,\"ticket\":%lu,\"movimiento\":\"%s\",\"boot\":%lu,\"epoch\":%lu,\"seq\":%lu,\"uptime_ms\":%lu,"
         "\"habilitado\":%s,\"dry_run\":%s,\"pwm_ordenado\":%d,\"pwm_aplicado\":%d,"
         "\"fallo\":\"%s\",\"ultimo_rechazo\":\"%s\",\"intervalo_orden_ms\":%lu,"
         "\"canal\":\"A\",\"limite_pwm\":%d,\"max_pulso_ms\":%lu}}",
@@ -206,7 +206,7 @@ static bool probe_udp() {
         cJSON* protocol = state ? cJSON_GetObjectItemCaseSensitive(state,"protocolo_control") : nullptr;
         cJSON* pwm = state ? cJSON_GetObjectItemCaseSensitive(state,"pwm_ordenado") : nullptr;
         valid = json && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(json,"ok")) &&
-            cJSON_IsNumber(protocol) && protocol->valueint == 2 &&
+            cJSON_IsNumber(protocol) && protocol->valueint == 3 &&
             cJSON_IsNumber(pwm) && pwm->valueint == 0 &&
             cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(state,"habilitado"));
         cJSON_Delete(json);
@@ -322,7 +322,7 @@ extern "C" void app_main() {
         if (now_ms() - report >= 1000) {
             char status[512];
             int n = snprintf(status,sizeof(status),
-                "{\"wifi_bank\":true,\"selftest\":true,\"wifi_ready\":%s,\"uptime_ms\":%lu,\"power\":%s,\"armed\":%s,\"pwm\":%d,\"fault\":\"%s\",\"epoch\":%lu,\"seq\":%lu,\"gap_ms\":%lu,\"rejection\":\"%s\",\"http_test\":%s,\"http_requests\":%lu,\"phone_connected\":%s,\"protocol\":2,\"udp_ready\":%s,\"udp_test\":%s,\"pwm_limit\":%d,\"max_pulse_ms\":%lu}\n",
+                "{\"wifi_bank\":true,\"selftest\":true,\"wifi_ready\":%s,\"uptime_ms\":%lu,\"power\":%s,\"armed\":%s,\"pwm\":%d,\"fault\":\"%s\",\"epoch\":%lu,\"seq\":%lu,\"gap_ms\":%lu,\"rejection\":\"%s\",\"http_test\":%s,\"http_requests\":%lu,\"phone_connected\":%s,\"protocol\":3,\"udp_ready\":%s,\"udp_test\":%s,\"pwm_limit\":%d,\"max_pulse_ms\":%lu}\n",
                 network_ready?"true":"false",static_cast<unsigned long>(now_ms()),
                 POWER ? "true":"false",bank.armed?"true":"false",applied,bank.fault,
                 static_cast<unsigned long>(bank.epoch),static_cast<unsigned long>(bank.seq),

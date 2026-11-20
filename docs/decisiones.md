@@ -56,3 +56,33 @@ App 0.5.1 incorpora prueba de PING sin habilitación, informe de RTT/pérdidas y
 ## D-25: Perfil de ensayo solicitado PWM 20 % / 500 ms
 
 Después de pitido sin giro a 15 %, se autoriza ajuste limitado a 20 % y se reduce el pulso de 2 s a 500 ms. Usuario mantiene dos motores en OUT1–OUT2; fuente declarada 12 V/CV, límite real no verificado. No valida corriente ni capacidad del L298. Se conservan parada por caducidad, tickets, rearme y canal B a cero. [Implementación y evidencia](trabajo/ensayo-pwm20.md). Sustituye cifras iniciales de D-20 para este perfil de banco; validación física pendiente.
+
+
+## D-26: Perfil solicitado PWM 60 % / 500 ms
+
+Petición expresa del usuario reemplaza 20 % de D-25 para el ensayo de dos motores OUT1–OUT2. Fuente TE-5305 a 12 V/CV, límite sin verificar; no se certifica corriente admisible. Mantener máximo 500 ms, rearme, watchdog V2, canal B apagado y ensayo manual supervisado. Firmware cargado y arranque detenido comprobado; movimiento pendiente. [Registro](trabajo/ensayo-pwm60.md).
+
+
+## D-27: Ampliación solicitada del ensayo a cinco segundos
+
+Usuario pide máximo 5 s conservando PWM 60 %. Se implementa y carga, manteniendo watchdog/rearme, sin órdenes físicas desde herramientas. No valida margen eléctrico del L298 tras pico de fuente informado de 4 A. [Evidencia](trabajo/ensayo-pwm60-5s.md). Se comparan [drivers de mayor corriente](../hardware/drivers-mayor-corriente.md); MDD20A candidato preferido por margen/protecciones, sin compra ni cambio de arquitectura o interfaz aprobados.
+
+
+## D-28: Tolerancia acotada a pérdida de confirmaciones en Android
+
+Solicitud del usuario tras error de ACK aislado. App 0.6.0 conserva socket y envía comandos nuevos mientras el gesto sigue válido; acepta ACK recientes sin retransmitir movimiento viejo. Cuatro esperas sin respuesta o 200 ms sin ACK acotan el fallo; no se amplía watchdog ESP de 250 ms ni se rearma automáticamente. NACK y cambio de sesión siguen deteniendo. [Implementación y pruebas](trabajo/tolerancia-ack-udp.md). Enlace final Raspberry–ESP sigue USB; modo Wi-Fi es banco temporal.
+
+
+## D-29: Datos persistentes separados de permiso de movimiento
+
+App 0.6.1, por solicitud del usuario: timeout/NACK suspenden mando pero mantienen socket; socket roto o Network Android distinto se recupera automáticamente. Sondeo de estado y PING restablecen datos y habilitan el botón, nunca los motores. Frescura descuenta RTT desde envío original; cuando falta margen pide token nuevo sin ampliar vigencias de firmware. [Contrato y evidencia](trabajo/recuperacion-canal-datos.md). Permanece arquitectura ROS/USB, canal B apagado y ensayo de cuatro motores pendiente.
+
+## D-30 — NUC como equipo oficial, 2026-11-20
+
+El usuario confirma Intel NUC RNUCC11PAHi30Z01 como plataforma oficial y cambia la prioridad de la jornada a cámara y reconocimiento. La cadena declarada debe cotejarse con etiqueta e inventario del sistema. La familia NUC11PAHi3 usa Core i3-1115G4 según ASUS. RAM, almacenamiento, versión de Ubuntu, cámara y controladores siguen por verificar.
+
+Ubuntu Desktop ya instalado. Deben conservarse cuentas, archivos y proyectos existentes. Priorizar cuenta propia lumi creada por un administrador. Como alternativa de recuperación local, crear cuenta nueva mediante recovery conservando la cuenta anterior. Si hay cifrado se necesita su clave correspondiente.
+
+Arquitectura vigente Android → Wi-Fi → NUC con ROS 2/percepción → USB → ESP. Las menciones a Raspberry como computador principal quedan como decisiones históricas. La distribución ROS se elegirá al comprobar versión de Ubuntu. La primera actividad de visión será identificar cámara y formatos, visualizar/capturar y validar enrolamiento antes de comparar reconocimiento.
+Referencia de hardware https://www.asus.com/gr/support/faq/1052636/
+Referencia de recuperación https://wiki.ubuntu.com/RecoveryMode
