@@ -10,13 +10,25 @@ from .practica import ventana_visible, guardar_json, normalizar_tecla, botones, 
 
 
 def elegir_objetivo(ventana, frame, personas):
-    """Elegir identidad revisada con tecla o clic, sin volver a la terminal."""
+    """La seleccion de identidad conserva visibles todos los recuadros."""
     cola=[]
     alto,ancho=frame.shape[:2]
+    vista=np.zeros((alto+86,ancho,3),dtype=frame.dtype)
+    vista[:alto]=frame
+    for i,persona in enumerate(personas,1):
+        x,y,r,b=persona["bbox"]
+        cv2.rectangle(vista,(x,y),(r,b),(0,230,0),2)
+        cv2.putText(vista,str(i),(x,max(20,y)),cv2.FONT_HERSHEY_SIMPLEX,.7,(0,230,0),2)
+    texto="Elige al objetivo: clic DENTRO de su recuadro o numero"
+    escala=min(.5,(ancho-12)/max(1,cv2.getTextSize(texto,cv2.FONT_HERSHEY_SIMPLEX,1,1)[0][0]))
+    cv2.putText(vista,texto,(6,alto+22),cv2.FONT_HERSHEY_SIMPLEX,escala,(255,255,255),1)
+    x_boton=ancho//2
+    cv2.rectangle(vista,(x_boton,alto+43),(ancho-1,alto+79),(65,65,65),-1)
+    cv2.putText(vista,"Ausente [0]",(x_boton+6,alto+67),cv2.FONT_HERSHEY_SIMPLEX,.45,(255,255,255),1)
     def clic(evento,x,y,flags,parametro):
         if evento != cv2.EVENT_LBUTTONDOWN:
             return
-        if y >= alto-42:
+        if x_boton <= x < ancho and alto+43 <= y <= alto+79:
             cola.append(0)
             return
         for i,persona in enumerate(personas,1):
@@ -26,13 +38,6 @@ def elegir_objetivo(ventana, frame, personas):
                 return
     cv2.setMouseCallback(ventana,clic)
     while True:
-        vista=frame.copy()
-        cv2.rectangle(vista,(0,0),(ancho-1,48),(20,20,20),-1)
-        cv2.putText(vista,"Clic en TU recuadro o numero. 0 = ausente",(6,20),
-                    cv2.FONT_HERSHEY_SIMPLEX,.48,(255,255,255),1)
-        cv2.rectangle(vista,(0,alto-42),(ancho-1,alto-1),(65,65,65),-1)
-        cv2.putText(vista,"Objetivo ausente [0] | Esc interrumpe",(8,alto-16),
-                    cv2.FONT_HERSHEY_SIMPLEX,.5,(255,255,255),1)
         cv2.imshow(ventana,vista)
         tecla=normalizar_tecla(cv2.waitKey(50))
         if cola:
@@ -43,12 +48,12 @@ def elegir_objetivo(ventana, frame, personas):
             return tecla-ord("0")
 
 
-def pedir_revision(ventana, frame, indice):
+def pedir_revision(ventana, frame, indice, *, guardados=0):
     """Las teclas desconocidas no descartan un fotograma."""
     cola=[]
     vista=frame.copy()
     cv2.rectangle(vista,(0,0),(vista.shape[1]-1,50),(20,20,20),-1)
-    cv2.putText(vista,f"REVISION frame {indice}: S / Enter para etiquetar",(8,20),
+    cv2.putText(vista,f"Frame {indice} | Guardados: {guardados} | S / Revisar",(8,20),
                 cv2.FONT_HERSHEY_SIMPLEX,.5,(255,255,255),1)
     cv2.putText(vista,"N omite el frame; no confirma identidad",(8,42),
                 cv2.FONT_HERSHEY_SIMPLEX,.48,(255,255,255),1)
@@ -69,9 +74,10 @@ def pedir_revision(ventana, frame, indice):
 
 
 class SeleccionRecuadros:
-    def __init__(self, ancho, alto):
+    def __init__(self, ancho, alto, maximo=None):
         self.ancho, self.alto = ancho, alto
         self.cajas = []
+        self.maximo = maximo
         self.inicio = None
         self.fin = None
 
@@ -88,14 +94,16 @@ class SeleccionRecuadros:
             izquierda,arriba = min(x0,x1),min(y0,y1)
             ancho,alto = abs(x1-x0),abs(y1-y0)
             if ancho >= 3 and alto >= 3:
+                if self.maximo == 1:
+                    self.cajas.clear()
                 self.cajas.append((izquierda,arriba,ancho,alto))
             self.inicio = self.fin = None
 
 
-def seleccionar_recuadros(ventana, frame):
+def seleccionar_recuadros(ventana, frame, *, solo=False):
     """Soltar el raton agrega un recuadro; boton o Espacio confirma la lista."""
     alto,ancho=frame.shape[:2]
-    seleccion=SeleccionRecuadros(ancho,alto)
+    seleccion=SeleccionRecuadros(ancho,alto,maximo=1 if solo else None)
     cola=[]
     lienzo_base = np.zeros((alto+86,ancho,3),dtype=frame.dtype)
     zonas=botones(lienzo_base,[
@@ -114,7 +122,8 @@ def seleccionar_recuadros(ventana, frame):
             cv2.putText(vista,str(i),(x,max(20,y)),cv2.FONT_HERSHEY_SIMPLEX,.7,(0,230,0),2)
         if seleccion.inicio is not None:
             cv2.rectangle(vista,seleccion.inicio,seleccion.fin,(0,200,255),1)
-        texto=f"Arrastra y suelta para agregar personas ({len(seleccion.cajas)}). Luego Confirmar."
+        texto=("Dibuja TU recuadro. Confirmar guarda al objetivo directamente."
+               if solo else f"Arrastra y suelta personas ({len(seleccion.cajas)}). Luego Confirmar.")
         escala=min(.5,(ancho-12)/max(1,cv2.getTextSize(texto,cv2.FONT_HERSHEY_SIMPLEX,1,1)[0][0]))
         cv2.putText(vista,texto,(6,alto+23),cv2.FONT_HERSHEY_SIMPLEX,escala,(255,255,255),1)
         cv2.imshow(ventana,vista)
@@ -132,7 +141,10 @@ def seleccionar_recuadros(ventana, frame):
             return []
 
 
-def anotar(video, split, escenario, paso):
+def anotar(video, split, escenario, paso, *, solo=None):
+    if solo is None:
+        guia=video.parent/"guia.json"
+        solo=json.loads(guia.read_text(encoding="utf-8")).get("solo",False) if guia.exists() else False
     ruta = video.with_suffix(".anotaciones.json")
     datos = {"split": split, "escenario": escenario, "objetivo": "objetivo", "frames": {}}
     if ruta.exists():
@@ -153,13 +165,13 @@ def anotar(video, split, escenario, paso):
             if not ok:
                 break
             if indice % paso == 0 and str(indice) not in datos["frames"]:
-                tecla = pedir_revision(ventana,frame,indice)
+                tecla = pedir_revision(ventana,frame,indice,guardados=len(datos["frames"]))
                 if tecla == 27 or not ventana_visible(ventana):
                     interrumpida = True
                     break
                 if tecla == ord("s"):
                     print("Arrastra y suelta para cada persona. Confirmar o Espacio termina; 0 confirma escena vacia.")
-                    cajas = seleccionar_recuadros(ventana,frame)
+                    cajas = seleccionar_recuadros(ventana,frame,solo=solo)
                     if cajas is None:
                         interrumpida = True
                         break
@@ -170,7 +182,9 @@ def anotar(video, split, escenario, paso):
                         cv2.putText(frame, str(i), (int(x), max(20, int(y))),
                                     cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 2)
                     if personas:
-                        numero = elegir_objetivo(ventana,frame,personas)
+                        if solo and len(personas) != 1:
+                            raise ValueError("En modo solo debes dibujar un unico recuadro del objetivo")
+                        numero = 1 if solo else elegir_objetivo(ventana,frame,personas)
                         if numero is None:
                             interrumpida = True
                             break
@@ -178,6 +192,7 @@ def anotar(video, split, escenario, paso):
                             personas[numero-1]["id"] = "objetivo"
                     datos["frames"][str(indice)] = personas
                     guardar_json(ruta, datos)
+                    print(f"Guardado frame {indice}: {len(personas)} personas; etiquetas {len(datos['frames'])}",flush=True)
             indice += 1
     finally:
         captura.release()
@@ -196,12 +211,14 @@ def main():
     parser.add_argument("video", type=Path)
     parser.add_argument("--split", choices=["calibracion", "evaluacion"], required=True)
     parser.add_argument("--escenario", required=True, help="Incluir direccion de luz y cruce/oclusion")
+    parser.add_argument("--solo",action="store_true",default=None,
+                        help="El unico recuadro confirmado es el objetivo; automatico en bateria --solo")
     parser.add_argument("--paso", type=int, default=5, help="5 frames a 10 FPS nominales; 1 en ventanas criticas")
     args = parser.parse_args()
     if args.paso < 1:
         parser.error("--paso debe ser positivo")
     try:
-        anotar(args.video.resolve(), args.split, args.escenario, args.paso)
+        anotar(args.video.resolve(), args.split, args.escenario, args.paso,solo=args.solo)
     except (ValueError, OSError, cv2.error) as error:
         parser.exit(1, f"Error: {error}\n")
 

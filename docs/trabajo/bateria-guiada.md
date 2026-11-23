@@ -73,3 +73,13 @@ Pasaron tres regresiones nuevas de archivo vacio, tecla desconocida seguida de E
 Se reemplaza cv2.selectROIs por un selector propio. Arrastrar y soltar agrega cada recuadro. Confirmar con clic o Espacio termina la lista; Z deshace; 0 confirma escena vacia; Esc interrumpe sin etiquetar ausencia. La revision de enrolamiento tambien acepta Espacio o clic en Aprobar. Se reconocen codigos Enter adicionales de Qt, conservando Enter como alternativa.
 
 Pasaron 37 pruebas Python locales, incluidas cinco regresiones del selector: arrastre inverso, clic sin teclado, Espacio, vacio frente a cancelar y guardado de etiquetas por el punto de entrada. Falta verificar el comportamiento nativo de teclado y raton en el Ubuntu del NUC. Las capturas anteriores se retoman con --continuar.
+
+## Confirmacion directa en modo solo, 2026-11-22
+
+La anotacion corresponde a las referencias humanas para evaluar los algoritmos. Dibujar un recuadro define su ubicacion y confirmar define que esa anotacion esta revisada. En una escena con distractores hace falta indicar ademas cual identidad es el objetivo.
+
+El anotador detecta automaticamente solo=true desde guia.json de la captura, incluso al retomar con --continuar. En ese modo un unico recuadro confirmado se guarda directamente como objetivo, sin pantalla de segundo clic. Si se redibuja, el nuevo recuadro reemplaza al anterior. Para una escena vacia se usa 0 o el boton Escena vacia. En el anotador independiente tambien se puede indicar --solo.
+
+Para varias personas se mantiene la seleccion explicita de identidad, con los bordes y numeros visibles. Se corrigio la desaparicion visual de los bordes en esa pantalla y se coloco el boton Ausente debajo de la imagen para no interceptar clics sobre el cuerpo. El guardado se realiza despues de la identidad y se muestra el numero acumulado de etiquetas en la siguiente pantalla, ademas de registrarse por terminal.
+
+Las etiquetas previamente revisadas se conservan al continuar. Las nuevas pruebas comprueban deteccion automatica de --solo, guardado persistente del objetivo sin segundo clic, reemplazo al redibujar y bordes/clic en el modo multiple. La verificacion del raton nativo del NUC sigue pendiente.
