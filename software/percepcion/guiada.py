@@ -1,4 +1,4 @@
-"""Una captura guiada y comparacion de identificadores, con CC-PPCA opcional."""
+"""Captura guiada y comparacion de identificadores, con CNN y CC-PPCA opcionales."""
 import argparse
 import csv
 import json
@@ -135,6 +135,7 @@ def validar_anotaciones(ruta, split, escenario):
 
 
 VENTAJAS = {
+    "cnn_reid": ("Encoder Re-ID preentrenado; galeria de hasta 24 recortes sin reentrenar.", "Aprendizaje externo previo; comprobar dominio de camara baja, distractores y coste real en el NUC."),
     "euclidea_eqhist": ("PCA Euclidea con contraste gris ecualizado antes del relleno.", "Puede amplificar ruido y no elimina cambios de pose, fondo o identidad."),
     "mahalanobis_eqhist": ("Misma proyeccion ecualizada que Euclidea, con covarianza regularizada.", "La ecualizacion y pocas muestras pueden alterar la covarianza; requiere calibracion propia."),
     "cc_ppca": (
@@ -239,11 +240,12 @@ def informe(salida, corridas, solo):
     lineas += ["## Pendientes", "",
                "Validar transiciones interior/exterior, participantes adicionales y funcionamiento fisico.",
                "Las intenciones de direccion del piloto son simuladas.",
-               "Si las tres alternativas fallan, comparar un encoder Re-ID con los mismos datos."]
+               ("CNN preentrenada incluida: comparte galeria y consultas, pero incorpora aprendizaje externo previo."
+                if "cnn_reid" in por_metodo else "Si las alternativas iniciales fallan, comparar un encoder Re-ID con los mismos datos.")]
     (salida/"informe.md").write_text("\n".join(lineas)+"\n",encoding="utf-8")
 
 
-def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar, galeria_negativa=None, mejorar_pca=False):
+def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar, galeria_negativa=None, mejorar_pca=False, cnn=None):
     guia = leer(carpeta/"guia.json")
     if not guia["terminada"] or guia["cancelada"]:
         raise ValueError("Captura incompleta. Los archivos se conservaron; falta completar la bateria")
@@ -252,7 +254,7 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar, galeria_negativa=
     marca = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     salida = REPO/"datos/procesados"/f"bateria-guiada-{marca}"
     salida.mkdir(parents=True)
-    guardar_json(salida/"sesion.json", {"origen":str(carpeta),"guia":guia,"repeticiones":repeticiones,"paso_revision":paso,"mejorar_pca":mejorar_pca,
+    guardar_json(salida/"sesion.json", {"origen":str(carpeta),"guia":guia,"repeticiones":repeticiones,"paso_revision":paso,"mejorar_pca":mejorar_pca,"cnn":cnn,
                                                  "galeria_negativa":str(galeria_negativa) if galeria_negativa else None})
     perfiles = PERFILES_MEJORA_PCA if mejorar_pca else None
     videos = {}
@@ -274,12 +276,12 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar, galeria_negativa=
             if not videos[split]:
                 raise ValueError(f"Faltan clips de {split}")
             if split == "calibracion":
-                preparar(galeria,salida/"cache-calibracion",videos[split],galeria_negativa=galeria_negativa,perfiles_pca=perfiles)
+                preparar(galeria,salida/"cache-calibracion",videos[split],galeria_negativa=galeria_negativa,perfiles_pca=perfiles,cnn=cnn)
                 calibrar(salida/"cache-calibracion",salida/"umbrales.json",
                          permitir_sin_distractores=solo)
                 print("Parametros congelados. Ahora revisaremos la evaluacion.",flush=True)
         preparar(galeria,salida/"cache-completa",videos["calibracion"]+videos["evaluacion"],
-                 galeria_negativa=galeria_negativa,perfiles_pca=perfiles)
+                 galeria_negativa=galeria_negativa,perfiles_pca=perfiles,cnn=cnn)
         corridas = []
         for i in range(repeticiones):
             corrida = salida/f"repeticion-{i+1:02}"
@@ -296,6 +298,9 @@ def main():
     parser.add_argument("--camara",type=int,default=0)
     parser.add_argument("--galeria-negativa",type=Path,
                         help="Galeria aprobada de OTRA persona, independiente de calibracion/evaluacion")
+    parser.add_argument("--cnn",action="store_true",help="Incluir encoder CNN OpenVINO congelado")
+    parser.add_argument("--descargar-cnn",action="store_true",help="Descargar pesos CNN oficiales e incluir experimento")
+    parser.add_argument("--modelo-cnn",type=Path,help="XML oficial 0288 FP16 ya descargado")
     parser.add_argument("--mejorar-pca",action="store_true",help="Comparar PCA originales y ecualizados con los mismos datos")
     parser.add_argument("--solo",action="store_true",help="Piloto sin distractor; informe sin ganador de identidad")
     parser.add_argument("--continuar",type=Path,help="Reanudar anotacion/analisis de una captura guiada completa")
@@ -309,6 +314,13 @@ def main():
     cv2.setNumThreads(1)
     carpeta = args.continuar.resolve() if args.continuar else REPO/"datos/enrolamientos"/datetime.now().strftime("guiada-%Y%m%d-%H%M%S-%f")
     try:
+        cnn=None
+        if args.cnn or args.descargar_cnn or args.modelo_cnn:
+            from .reid_openvino import configuracion, descargar
+            ruta=args.modelo_cnn
+            if args.descargar_cnn:
+                ruta=descargar(ruta.parent) if ruta else descargar()
+            cnn=configuracion(ruta)
         if args.continuar is None:
             carpeta.mkdir(parents=True)
             guia=Guia(carpeta,args.solo)
@@ -327,7 +339,7 @@ def main():
                 return
         analizar(carpeta,repeticiones=args.repeticiones,paso=args.paso_revision,
                  galeria_negativa=args.galeria_negativa.resolve() if args.galeria_negativa else None,
-                 mejorar_pca=args.mejorar_pca)
+                 mejorar_pca=args.mejorar_pca,cnn=cnn)
     except (ValueError,OSError,KeyError,RuntimeError,cv2.error) as error:
         parser.exit(1,f"Error: {error}\nDatos: {carpeta}\nPara reanudar revision: --continuar {carpeta}\n")
 

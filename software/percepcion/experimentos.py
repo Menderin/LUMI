@@ -153,7 +153,7 @@ def crear_identificadores(muestras, base, alto=128, perfiles_pca=None):
 
 
 def guardar_representacion(modelo, ruta):
-    if modelo.metodo == "cc_ppca":
+    if modelo.metodo in {"cc_ppca","cnn_reid"}:
         modelo.guardar(ruta)
         return
     valores = {"metodo": np.array(modelo.metodo), "alto": np.array(modelo.alto),

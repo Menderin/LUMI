@@ -50,3 +50,5 @@ Antes de cambiar captura, identificacion o zonas, leer [enrolamiento comparable]
 Para la bateria integrada de tres metodos leer [asistente guiado](docs/trabajo/bateria-guiada.md). Los informes sin distractores son exploratorios y no seleccionan ganador de identidad.
 
 Para el cuarto experimento probabilistico leer [CC-PPCA corporal](docs/trabajo/cc-ppca.md). La clase negativa procede de otra galeria aprobada e independiente de calibracion/evaluacion. No fabricar resultados cuando falten clases ni usar la evaluacion para ajustar el modelo.
+
+Para comparar CNN con los mismos recortes leer [CNN Re-ID](docs/trabajo/cnn-reid.md). Encoder preentrenado congelado, pesos oficiales verificados, galeria fija y calibracion separada. La comparacion offline no habilita actuacion ni cambia el identificador de la demo en vivo.

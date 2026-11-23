@@ -110,3 +110,7 @@ Se incorpora la adaptacion corporal de CC-PPCA/NBC del articulo de Bekios Calfa 
 ## Variantes de preprocesamiento PCA
 
 Ver [comparacion controlada de PCA originales y ecualizados](trabajo/mejoras-pca.md). Se activa con --mejorar-pca y conserva los resultados anteriores.
+
+## CNN Re-ID opcional
+
+Ver [experimento CNN con la misma galeria de enrolamiento](trabajo/cnn-reid.md). Activar con --cnn o --descargar-cnn; conserva el histograma y PCA como referencias y genera otra corrida.

@@ -268,6 +268,33 @@ class Comparacion(unittest.TestCase):
             informe(root/"informe6",[root/"resultado6"],solo=False)
             self.assertIn("## euclidea_eqhist",(root/"informe6"/"informe.md").read_text())
 
+            # Integracion opcional con pesos oficiales reales; nunca descarga en tests.
+            import os
+            ruta_cnn=os.environ.get("LUMI_REID_XML")
+            if ruta_cnn:
+                from software.percepcion.reid_openvino import configuracion
+                from software.percepcion.comparar_sesion import clonar_con_cnn
+                cache7=root/"cache7"
+                clonar_con_cnn(cache6,cache7,configuracion(ruta_cnn))
+                cfg7=root/"congelada7.json"
+                with self.assertRaises(ValueError):
+                    evaluar(cache7,cfg6,root/"umbrales-sin-cnn")
+                calibrar(cache7,cfg7)
+                evaluar(cache7,cfg7,root/"resultado7")
+                evaluar(cache7,cfg7,root/"resultado7b")
+                (root/"informe7").mkdir()
+                informe(root/"informe7",[root/"resultado7",root/"resultado7b"],solo=False)
+                with (root/"informe7"/"comparacion.csv").open() as f:
+                    siete=list(csv.DictReader(f))
+                self.assertEqual(len(siete),7)
+                self.assertIn("cnn_reid",{r["metodo"] for r in siete})
+                recomendacion=json.loads((root/"informe7"/"recomendacion.json").read_text())
+                self.assertTrue(recomendacion["decisiones_equivalentes"])
+                with np.load(cache7/"cnn_reid.npz") as embeddings:
+                    self.assertEqual(embeddings["galeria"].shape,(8,256))
+                ficha=json.loads((root/"resultado7"/"cnn_reid.json").read_text())
+                self.assertEqual(ficha["modelo"]["dimension"],256)
+
             cv2.imwrite(str(cache4/"galeria-negativa"/"00.png"),np.zeros((128,64,3),np.uint8))
             with self.assertRaisesRegex(ValueError,"negativa cambio"):
                 evaluar(cache4,cfg4,root/"resultado5")

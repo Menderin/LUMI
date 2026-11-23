@@ -33,6 +33,8 @@ def leer(ruta):
 def firma_calibracion(cache):
     contenido = {"galeria_sha256": cache["galeria_sha256"],
                  "frames": [r for r in cache["frames"] if r["split"] == "calibracion"]}
+    if cache.get("cnn"):
+        contenido["cnn"] = cache["cnn"]
     if cache.get("perfiles_pca"):
         contenido["perfiles_pca"] = cache["perfiles_pca"]
     if cache.get("negativa_sha256"):
@@ -90,7 +92,17 @@ def clonar_con_mejoras(cache_dir, salida):
     guardar_json(salida/"cache.json",cache)
 
 
-def preparar(galeria, salida, videos, *, galeria_negativa=None, perfiles_pca=None):
+def clonar_con_cnn(cache_dir,salida,cnn):
+    if salida.exists():
+        raise ValueError("Usa una cache de salida nueva")
+    cache=leer(cache_dir/"cache.json")
+    comprobar_cache(cache_dir,cache)
+    shutil.copytree(cache_dir,salida)
+    cache["cnn"]=cnn
+    guardar_json(salida/"cache.json",cache)
+
+
+def preparar(galeria, salida, videos, *, galeria_negativa=None, perfiles_pca=None, cnn=None):
     if salida.exists():
         raise ValueError("La salida debe ser nueva para conservar corridas anteriores")
     ficha = leer(galeria / "galeria.json")
@@ -180,6 +192,8 @@ def preparar(galeria, salida, videos, *, galeria_negativa=None, perfiles_pca=Non
             "sha256": marca, "origen": str(video), "split": anotaciones["split"],
             "configuracion_captura": leer(config_origen) if config_origen.exists() else None,
         })
+    if cnn:
+        cache["cnn"]=cnn
     if perfiles_pca:
         cache["perfiles_pca"]=perfiles_pca
     if galeria_negativa is not None:
@@ -189,6 +203,10 @@ def preparar(galeria, salida, videos, *, galeria_negativa=None, perfiles_pca=Non
 
 
 def comprobar_cache(cache_dir, cache):
+    if cache.get("cnn"):
+        from .reid_openvino import configuracion
+        if configuracion(cache["cnn"]["ruta"],cache["cnn"]["hilos"]) != cache["cnn"]:
+            raise ValueError("Configuracion o pesos CNN cambiaron")
     for i, esperado in enumerate(cache["galeria_sha256"]):
         if sha256(cache_dir / "galeria" / f"{i:02}.png") != esperado:
             raise ValueError("La galeria cambio despues de preparar")
@@ -208,6 +226,9 @@ def modelos(cache_dir, *, incidencias=None):
         raise ValueError("Recorte de galeria ilegible")
     cache=leer(cache_dir/"cache.json")
     resultado = crear_identificadores(muestras,cache_dir,perfiles_pca=cache.get("perfiles_pca"))
+    if cache.get("cnn"):
+        from .reid_openvino import ReIDOpenVINO
+        resultado["cnn_reid"]=ReIDOpenVINO(muestras,cache["cnn"])
     motivo = "Falta galeria aprobada de otra persona para la segunda clase"
     if cache.get("negativa_sha256"):
         from .cc_ppca import CCPPCA
@@ -433,6 +454,10 @@ def main():
     mejorar_cmd=comandos.add_parser("con-mejoras-pca",help="Comparar originales y PCA ecualizados reutilizando cache")
     mejorar_cmd.add_argument("cache",type=Path)
     mejorar_cmd.add_argument("salida",type=Path)
+    cnn_cmd=comandos.add_parser("con-cnn",help="Comparar CNN reutilizando recortes existentes")
+    cnn_cmd.add_argument("cache",type=Path)
+    cnn_cmd.add_argument("salida",type=Path)
+    cnn_cmd.add_argument("--modelo-cnn",type=Path)
     clonar_cmd=comandos.add_parser("con-negativos",help="Reutilizar cache existente sin volver a abrir videos")
     clonar_cmd.add_argument("cache",type=Path)
     clonar_cmd.add_argument("galeria_negativa",type=Path)
@@ -456,6 +481,9 @@ def main():
                      perfiles_pca=PERFILES_MEJORA_PCA if args.mejorar_pca else None)
         elif args.accion == "con-mejoras-pca":
             clonar_con_mejoras(args.cache.resolve(),args.salida.resolve())
+        elif args.accion == "con-cnn":
+            from .reid_openvino import configuracion
+            clonar_con_cnn(args.cache.resolve(),args.salida.resolve(),configuracion(args.modelo_cnn))
         elif args.accion == "con-negativos":
             clonar_con_negativa(args.cache.resolve(),args.galeria_negativa.resolve(),args.salida.resolve())
         elif args.accion == "calibrar":
@@ -463,7 +491,7 @@ def main():
                      permitir_sin_distractores=args.permitir_sin_distractores)
         else:
             evaluar(args.cache.resolve(), args.configuracion.resolve(), args.salida.resolve())
-    except (ValueError, OSError, KeyError, ImportError, cv2.error) as error:
+    except (ValueError, OSError, KeyError, ImportError, RuntimeError, cv2.error) as error:
         parser.exit(1, f"Error: {error}\n")
     finally:
         limites.restore_original_limits()
