@@ -60,3 +60,7 @@ La app 0.8.0 selecciona una persona sobre video y controla enrolamiento en el NU
 ## Experimento E1: agregacion de galeria
 
 Ver [minimo frente a mediana de tres distancias](docs/trabajo/experimento-agregacion-galeria.md). Se activa con --comparar-galeria; conserva datos y referencias. Histograma/CNN reciben umbrales separados y el movimiento permanece restringido.
+
+## Video movil 0.8.1
+
+[Mejora de fluidez y mediciones](docs/trabajo/fluidez-video-movil.md): un GET por imagen, periodo100ms, HTTP persistente, entrega de ultimo cuadro y FPS reales dibujados. Actualizar app y reiniciar servidor actualizado para obtener mejora completa. Movimiento sigue restringido.

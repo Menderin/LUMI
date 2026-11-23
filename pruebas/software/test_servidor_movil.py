@@ -100,6 +100,23 @@ class SeleccionMovil(unittest.TestCase):
                 decoded=cv2.imdecode(np.frombuffer(base64.b64decode(body["jpeg"]),np.uint8),cv2.IMREAD_COLOR)
                 self.assertEqual(decoded.shape[:2],(body["alto"],body["ancho"]))
                 self.assertEqual(body["cajas"],[list(x) for x in CAJAS])
+                import http.client
+                conexion=http.client.HTTPConnection("127.0.0.1",server.server_port,timeout=2)
+                try:
+                    conexion.request("GET","/api/vision/frame")
+                    primera=conexion.getresponse()
+                    self.assertEqual(primera.version,11)
+                    self.assertEqual(primera.status,200)
+                    primera.read()
+                    sock=conexion.sock
+                    conexion.request("GET","/api/estado")
+                    segunda=conexion.getresponse()
+                    self.assertEqual(segunda.status,200)
+                    segunda.read()
+                    self.assertIs(conexion.sock,sock)
+                finally:
+                    conexion.close()
+
                 with self.assertRaises(HTTPError) as error:
                     urlopen(Request(base+"/api/movimiento",data=b'{}',headers={"Content-Type":"application/json"}))
                 self.assertEqual(error.exception.code,403)

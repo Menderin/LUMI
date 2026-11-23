@@ -5,7 +5,6 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.*;
 import android.net.*;
-import android.net.wifi.WifiManager;
 import android.os.*;
 import android.provider.Settings;
 import android.util.Base64;
@@ -32,6 +31,19 @@ public class VisionActivity extends Activity {
     private LinearLayout enrollment;
     private SnapshotView video;
     private String phase="desconectado";
+    private final VideoFrameStats displayStats=new VideoFrameStats();
+    private final LatestFrameSlot<VideoUpdate> pendingVideo=new LatestFrameSlot<>();
+    private long frameLoadMs;
+    private long lastVideoLog;
+    private static final class VideoUpdate {
+        final long generation,loadMs;
+        final JSONObject snapshot;
+        final Bitmap bitmap;
+        final String error;
+        VideoUpdate(long generation,long loadMs,JSONObject snapshot,Bitmap bitmap,String error){
+            this.generation=generation;this.loadMs=loadMs;this.snapshot=snapshot;this.bitmap=bitmap;this.error=error;
+        }
+    }
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
@@ -60,7 +72,7 @@ public class VisionActivity extends Activity {
         LinearLayout menu=new LinearLayout(this);
         menu.setOrientation(1); menu.setPadding(dp(12),dp(8),dp(12),dp(8));
         menu.setBackgroundColor(0xffeef6f2); scroll.addView(menu);
-        label(menu,"Laboratorio · v0.8.0",17,0xff112220);
+        label(menu,"Laboratorio · v0.8.1",17,0xff112220);
         button(menu,"Elegir Wi-Fi del NUC").setOnClickListener(v->{
             disconnect(); startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS));
         });
@@ -135,9 +147,11 @@ public class VisionActivity extends Activity {
         if(connect!=null){connect.setText("Conectar al NUC");status.setText("Sin conexión");buttons();}
     }
     private JSONObject request(String path,JSONObject body,Network network,String address)throws Exception{
+        long requestStart=SystemClock.elapsedRealtime();
         if(network==null)throw new IOException("No hay red Wi-Fi seleccionada");
         HttpURLConnection c=(HttpURLConnection)network.openConnection(new URL(address+path));
         c.setConnectTimeout(2000);c.setReadTimeout(5000);c.setUseCaches(false);
+        boolean responseRead=false;
         try{
             if(body!=null){
                 c.setRequestMethod("POST");c.setDoOutput(true);
@@ -147,53 +161,82 @@ public class VisionActivity extends Activity {
                 try(OutputStream out=c.getOutputStream()){out.write(bytes);}
             }
             int code=c.getResponseCode();
+            long headersAt=SystemClock.elapsedRealtime();
             InputStream raw=code<400?c.getInputStream():c.getErrorStream();
             if(raw==null)throw new IOException("HTTP "+code);
             ByteArrayOutputStream out=new ByteArrayOutputStream();
             try(InputStream in=raw){byte[] buffer=new byte[8192];int n;
                 while((n=in.read(buffer))!=-1){out.write(buffer,0,n);if(out.size()>4*1024*1024)throw new IOException("Respuesta demasiado grande");}}
+            responseRead=true; // Cuerpo leido y cerrado: permitir reutilizacion de conexion HTTP/1.1.
+            long bodyAt=SystemClock.elapsedRealtime();
             JSONObject response=new JSONObject(new String(out.toByteArray(),StandardCharsets.UTF_8));
+            if(path.equals("/api/vision/frame") && bodyAt-lastVideoLog>=2000){
+                lastVideoLog=bodyAt;
+                android.util.Log.d("LUMI_VIDEO","cabeceras_ms="+(headersAt-requestStart)+
+                    " cuerpo_ms="+(bodyAt-headersAt)+" json_ms="+(SystemClock.elapsedRealtime()-bodyAt)+" bytes="+out.size());
+            }
             if(code>=400)throw new IOException(response.optString("error","HTTP "+code));
             return response;
-        }finally{c.disconnect();}
+        }finally{if(!responseRead)c.disconnect();}
     }
     private Bitmap decode(JSONObject response)throws Exception{
         byte[] bytes=Base64.decode(response.getString("jpeg"),Base64.DEFAULT);
         Bitmap b=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
         if(b==null)throw new IOException("Imagen inválida");return b;
     }
-    private void poll(long generation){
-        while(connected && foreground && generation==epoch){
-            try{
-                Network current=wifiNetwork();if(current==null)throw new IOException("Wi-Fi desconectado");
-                wifi=current;
-                JSONObject state=request("/api/estado",null,current,base);
-                if(!state.optString("servidor").equals("lumi-vision-nuc-v1"))
-                    throw new IOException("Este destino no es el servidor de visión del NUC");
-                JSONObject frame=request("/api/vision/frame",null,current,base);
-                Bitmap bitmap=decode(frame);
-                ui.post(()->{
-                    if(generation!=epoch || !connected)return;
-                    update(frame.optJSONObject("estado"));
-                    if(!reviewMode)video.show(bitmap,frame);
-                });
-            }catch(Exception error){
-                String message=error.getMessage();
-                ui.post(()->{
-                    if(generation!=epoch)return;
-                    phase="reconectando";status.setText("Reconectando al NUC…");
-                    notice.setText(message+" · Reintentando por Wi-Fi");video.clear();buttons();
-                });
+    private void deliver(VideoUpdate next){
+        if(pendingVideo.offer(next))ui.post(()->{
+            VideoUpdate current=pendingVideo.take();
+            if(current==null||current.generation!=epoch||!connected)return;
+            if(current.error!=null){
+                phase="reconectando";status.setText("Reconectando al NUC…");
+                notice.setText(current.error+" · Reintentando por Wi-Fi");video.clear();buttons();return;
             }
-            try{Thread.sleep(200);}catch(InterruptedException error){return;}
+            frameLoadMs=current.loadMs;
+            update(current.snapshot.optJSONObject("estado"));
+            if(!reviewMode)video.show(current.bitmap,current.snapshot);
+        });
+    }
+    private void poll(long generation){
+        long lastWifiCheck=0;
+        while(connected && foreground && generation==epoch){
+            long start=SystemClock.elapsedRealtime();
+            boolean success=false;
+            try{
+                Network current=wifi;
+                if(current==null || start-lastWifiCheck>=1000){
+                    Network available=wifiNetwork();
+                    if(current==null || available==null || !current.equals(available))current=available;
+                    lastWifiCheck=start;wifi=current;
+                }
+                if(current==null)throw new IOException("Wi-Fi desconectado");
+                // El frame ya contiene estado y contrato: un GET atomico por iteracion.
+                JSONObject frame=request("/api/vision/frame",null,current,base);
+                JSONObject state=frame.optJSONObject("estado");
+                if(state==null || !state.optString("servidor").equals("lumi-vision-nuc-v1"))
+                    throw new IOException("Este destino no es el servidor de visión del NUC");
+                frame.getString("frame_id");
+                Bitmap bitmap=decode(frame);
+                long load=SystemClock.elapsedRealtime()-start;
+                deliver(new VideoUpdate(generation,load,frame,bitmap,null));
+                success=true;
+            }catch(Exception error){
+                wifi=null;
+                deliver(new VideoUpdate(generation,0,null,null,
+                    error.getMessage()!=null?error.getMessage():"No se pudo recibir la imagen"));
+            }
+            long wait=VideoFrameStats.waitMillis(start,SystemClock.elapsedRealtime(),success);
+            try{if(wait>0)Thread.sleep(wait);}catch(InterruptedException error){return;}
         }
     }
     private void update(JSONObject state){
         if(state==null)return;
         phase=state.optString("estado");
         status.setText(phase+" · "+state.optString("mensaje"));
-        detail.setText(state.optString("metodo")+" · "+state.optDouble("fps")+" FPS · "+
-            state.optDouble("procesamiento_ms")+" ms · Movimiento restringido");
+        detail.setText(String.format(java.util.Locale.getDefault(),
+            "%s · NUC: %.1f FPS / %.0f ms · App: %s · Carga: %d ms\nMovimiento restringido",
+            state.optString("metodo"),state.optDouble("fps"),state.optDouble("procesamiento_ms"),
+            reviewMode?"revisión":String.format(java.util.Locale.getDefault(),"%.1f FPS",displayStats.fps(SystemClock.elapsedRealtime())),frameLoadMs));
         notice.setText((phase.equals("preparando")||phase.equals("enrolando"))?
             "Gira despacio · "+(int)Math.ceil(state.optDouble("segundos_restantes"))+" s restantes":
             phase.equals("revision")?"Revisa identidad y vistas en TODOS los recortes antes de confirmar.":
@@ -264,7 +307,7 @@ public class VisionActivity extends Activity {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         SnapshotView(){super(VisionActivity.this);setBackgroundColor(0xff081412);
             setContentDescription("Cámara del NUC. Toca un recuadro para seleccionar a la persona.");}
-        void clear(){bitmap=null;snapshot=null;invalidate();}
+        void clear(){bitmap=null;snapshot=null;displayStats.reset();invalidate();}
         void show(Bitmap b,JSONObject data){bitmap=b;snapshot=data;invalidate();}
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);if(bitmap==null)return;
@@ -273,6 +316,7 @@ public class VisionActivity extends Activity {
             paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);paint.setFilterBitmap(true);
             canvas.drawBitmap(bitmap,0,0,paint);
             if(snapshot!=null){
+                displayStats.record(snapshot.optString("frame_id",null),SystemClock.elapsedRealtime());
                 JSONArray boxes=snapshot.optJSONArray("cajas");
                 if(boxes!=null)for(int i=0;i<boxes.length();i++){
                     JSONArray b=boxes.optJSONArray(i);if(b==null)continue;

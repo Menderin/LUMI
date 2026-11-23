@@ -4,6 +4,7 @@ import base64
 import json
 import math
 import queue
+import socket
 import threading
 import time
 import uuid
@@ -276,6 +277,13 @@ class BancoVision:
 
 def manejador(banco):
     class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def setup(self):
+            super().setup()
+            self.connection.setsockopt(socket.IPPROTO_TCP,socket.TCP_NODELAY,1)
+            self.connection.settimeout(10)
+
         def log_message(self, formato, *args):
             pass
 
@@ -307,6 +315,7 @@ def manejador(banco):
 
         def do_POST(self):
             if self.path not in ("/api/enrolamiento","/api/vision/seleccionar"):
+                self.close_connection = True
                 return self.responder(403,{"error":"Movimiento restringido; este servidor es solo de vision"})
             try:
                 longitud = int(self.headers.get("Content-Length","0"))
@@ -323,6 +332,7 @@ def manejador(banco):
                     return self.responder(503,{"error":"Vision ocupada; revisa estado antes de reintentar"})
                 self.responder(200 if respuesta["ok"] else 409,respuesta)
             except (ValueError,queue.Full) as error:
+                self.close_connection = True
                 self.responder(400,{"error":str(error)})
     return Handler
 

@@ -55,3 +55,7 @@ La app de banco vigente es **0.7.0**. Usa [firmware protocolo 3](../../docs/trab
 ## Banco de vision movil en NUC (2026-11-23)
 
 La app 0.8.0 selecciona una persona sobre video y controla enrolamiento en el NUC, que administra su Wi-Fi. Movimiento restringido tanto en app como en este servidor, sin conexion ESP/ROS de actuacion. Leer [contrato, arranque y verificacion](../../docs/trabajo/enrolamiento-movil-nuc.md). La nueva entrada es python -m software.percepcion.servidor_movil, distinta del servidor de simulacion anterior.
+
+## Video movil 0.8.1
+
+[Mejora de fluidez y mediciones](../../docs/trabajo/fluidez-video-movil.md): un GET por imagen, periodo100ms, HTTP persistente, entrega de ultimo cuadro y FPS reales dibujados. Actualizar app y reiniciar servidor actualizado para obtener mejora completa. Movimiento sigue restringido.
