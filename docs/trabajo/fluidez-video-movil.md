@@ -1,5 +1,18 @@
 # Fluidez de video Android 0.8.1
 
+## Estado vigente (2026-11-23)
+
+Por decision del equipo, **0.8.2 queda como version estable de respaldo del banco de vision movil**. El operador informa que su compañero la probo en otro movil y el video funciono muy bien. Los picos de hasta2500ms observados en el primer telefono se conservan como incidencia dependiente del entorno/dispositivo por investigar: la nueva prueba no demuestra que el telefono sea la causa ni garantiza el mismo rendimiento en todos los equipos.
+
+- APK conservado: LUMI-Vision-0.8.2.apk, versionCode17. SHA256: e8c90f9712df9bea76876579837fb2bee6b3afb07ad6f1f1413e951c32216017.
+- Codigo de referencia: commit 1b03cc266b84a8d544970378b0c24ec670f04f5d. Su manifiesto declara0.8.2. Conservar ese commit; no reemplazar sus archivos con los cambios WebRTC ni reescribir el historial para volver atras.
+- **0.9.0 sigue experimental** mientras el operador prueba WebRTC en el telefono/NUC reales. No se ha generado una0.8.3.
+- El APK antiguo permanece fuera de Git, en la carpeta local android-build. Para reinstalar0.8.2 sobre0.9.0, Android puede exigir desinstalar primero la app por el versionCode inferior; se pierden ajustes locales como la direccion guardada. Los videos y galerias guardados en el NUC no se eliminan al desinstalar la app del telefono.
+- Para una comparacion rapida sin reinstalar,0.9.0 permite elegir Video: JPEG y reconectar. Es una alternativa de transporte en0.9.0, no una restauracion exacta del codigo0.8.2. El servidor nuevo conserva los endpoints HTTP que utiliza el APK0.8.2.
+
+Las secciones siguientes mantienen la evidencia historica. Sus advertencias sobre validacion pendiente describen el momento de cada prueba; esta decision no borra el fallo observado en el primer movil. Movimiento restringido en ambas versiones.
+
+
 Solicitud autorizada, 2026-11-23: NUC indica10FPS/33ms pero movil lento. Acercar visualizacion a10FPS antes de continuar experimentos. GitHub y HU de Vicente consultados; HU Doing.
 
 Estado: implementado y verificado localmente; pendiente de telefono real/NUC. Mantener contrato con servidor_movil0.8.0, imagen+recuadros+frame_id atomicos y movimiento restringido. La app actual hace dos GET secuenciales y espera200ms despues: frecuencia real inferior a5FPS. Cambiar a un GET del frame (ya incorpora estado), periodo objetivo100ms contando tiempo de descarga/decodificacion, sin acumular callbacks UI ni repetir frames como si fueran nuevos. Medir frames unicos dibujados en movil, conservar FPS/proceso del NUC y mostrar tiempo de carga de imagen; no presentarlo como latencia captura-pantalla.

@@ -68,3 +68,8 @@ La app 0.8.0 selecciona una persona sobre video y controla enrolamiento en el NU
 ## Video WebRTC nativo0.9.0
 
 [Transporte, arranque y prueba A/B](../../docs/trabajo/webrtc-movil-nuc.md): servidor de vision con --webrtc, app nativa VP8 y HTTP para estado/enrolamiento; UDP50000-50009 del hotspot. Comparacion explicita conJPEG. Camara unica y movimiento restringido. Validacion fisica NUC/telefono pendiente.
+
+
+## Version de respaldo acordada
+
+**0.8.2 estable para el banco de vision;0.9.0 WebRTC en pruebas.** Prueba positiva reportada en el movil del compañero; picos en el primer movil siguen por investigar. APK y commit exactos, limites y retorno documentados en [estado de versiones](../../docs/trabajo/fluidez-video-movil.md#estado-vigente-2026-11-23). No existe un APK0.8.3 generado en esta entrega.

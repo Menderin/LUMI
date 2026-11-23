@@ -79,3 +79,8 @@ pwsh -File software/panel_movil/android/compilar.ps1
 - La prueba local no reproduce radio, camara ni carga real del NUC. No afirmar que desaparecieron los picos de2500ms antes de que el operador lo mida.
 
 - Recuperacion comprobada en Android emulado: cerrar la sesion desde la API interrumpio el video; sin tocar Conectar la app negocio una sesion distinta y volvio a estado connected/ICE completed. Esto no reproduce cambiar de hotspot ni una perdida real de radio.
+
+
+## Decision del equipo tras prueba en otro movil
+
+2026-11-23: operador reporta buen funcionamiento de0.8.2 en el movil del compañero y pide conservarla como estable de respaldo.0.9.0 permanece experimental hasta su prueba fisica. No atribuir la diferencia exclusivamente al telefono sin una comparacion controlada. Referencia exacta de retorno en [estado de versiones](fluidez-video-movil.md#estado-vigente-2026-11-23). No se ha producido0.8.3.
