@@ -53,7 +53,7 @@ La CNN tiene aprendizaje previo externo, mientras la PCA actual aprende su proye
 
 El flujo guiado crea otra carpeta bajo datos/procesados/bateria-guiada-FECHA e imprime INFORME. Contiene informe.md, comparacion.csv, umbrales.json y repeticion-01..03. Cada repeticion incluye cnn_reid.json (parametros, metricas por escenario, hashes y recursos) y cnn_reid-frames.jsonl (decisiones). cache-completa/cnn_reid.npz guarda la galeria codificada de forma local. No sobrescribe resultados previos.
 
-Tres inferencias de calentamiento se realizan antes de codificar la galeria y medir consultas. Se guardan tiempo de calentamiento y codificacion; compilacion no entra en el p95 de consultas. El p95 combinado sigue sumando deteccion guardada e identificacion offline, sin medir camara-pantalla. RSS refleja el proceso completo con modelos cargados, no memoria exclusiva de CNN. CPU y rendimiento deben medirse en el NUC. Esta entrega compara offline; la demo en vivo mantiene el identificador anterior.
+Tres inferencias de calentamiento se realizan antes de codificar la galeria y medir consultas. Se guardan tiempo de calentamiento y codificacion; compilacion no entra en el p95 de consultas. El p95 combinado sigue sumando deteccion guardada e identificacion offline, sin medir camara-pantalla. RSS refleja el proceso completo con modelos cargados, no memoria exclusiva de CNN. CPU y rendimiento deben medirse en el NUC. La primera entrega comparaba offline; la extension siguiente habilita tambien la seleccion explicita de CNN en vivo.
 
 Los pesos, sus hashes y parametros forman parte del control de configuracion. Un cambio de pesos o agregar CNN invalida umbrales anteriores. Las tres repeticiones prueban estabilidad de decisiones, no nuevos participantes ni videos. El piloto sin distractores sigue sin elegir ganador de identidad. Los videos ya analizados son evidencia de desarrollo; despues de seleccionar configuracion hace falta otra evaluacion independiente.
 
@@ -64,3 +64,35 @@ Los pesos, sus hashes y parametros forman parte del control de configuracion. Un
 - 51 pruebas pasaron, incluida integracion con los pesos reales: preparar/reciclar cache, calibrar, evaluar dos veces, generar informe con siete metodos al aportar tambien negativos y mejoras PCA, y decisiones equivalentes entre corridas.
 - Pruebas de BGR, escala, normalizacion, distancias, archivos incompletos/corruptos y rechazo de calibracion sin CNN sobre cache ampliada.
 - Pendiente: ejecutar con los videos reales del usuario en el NUC. No se afirma precision ni FPS para ese equipo.
+
+## Extension autorizada: prueba en vivo, 2026-11-23
+
+Usuario solicita comprobar CNN en la ventana. Implementar selector cnn_reid conservando detector OpenVINO y perfil CPU/10 FPS. Mostrar metodo, umbral, margen y motivo. Permitir cargar umbrales de la corrida offline; verificar hashes de pesos. El nuevo enrolamiento usa hasta 24 recortes, no reentrena el encoder. Confirmar deja Listo y S inicia solo simulacion. Verificar selector, registro, rechazo y recuperacion mediante pruebas sinteticas; prueba fisica de camara pendiente en NUC.
+
+### Ejecutar la CNN en vivo
+
+Desde la terminal del escritorio del NUC, despues de sincronizar el codigo:
+
+```bash
+cd /home/lumi/Desktop/Lumi
+source .venv-practica/bin/activate
+python -m software.percepcion.practica --camara 0 --metodo cnn_reid --parametros auto
+```
+
+La opcion auto busca la carpeta bateria-guiada mas reciente que incluya cnn_reid en umbrales.json. No inventa umbrales si no los encuentra; informa un error. Es posible fijar la corrida con --parametros RUTA_UMBRALES_JSON. No combinarlo con --umbral/--margen. Verifica hashes del encoder contra los usados al calibrar y rechaza calibraciones sin aciertos utiles. Si faltan pesos, agregar --descargar-cnn (y --descargar-modelo si falta tambien el detector).
+
+E inicia cuenta regresiva y captura de 12 segundos. Aprobar con Espacio o boton deja Listo; S inicia seguimiento simulado. R repite, C cancela, V graba clip independiente, Esc cierra. La CNN no se entrena: codifica hasta 24 recortes de este nuevo enrolamiento con pesos congelados. Se conserva la busqueda y recuperacion de tres coincidencias tras una perdida. No envia ordenes a ESP ni motores.
+
+El panel muestra cnn_reid, umbral u, margen m y motivo (sin_galeria, ausencia, rechazo, ambiguedad, coincidencia o confirmacion). Cada recuadro muestra su distancia d; menor distancia indica mayor similitud, no probabilidad. Los indicadores de CPU y FPS permanecen. La galeria guarda cnn_reid.npz y metadatos de pesos; configuracion.json conserva metodo y parametros importados, decisiones.csv guarda distancias y estado. Solo se carga el identificador CNN al elegirlo, no tres identificadores simultaneos.
+
+Importar el umbral offline es una referencia diagnostica. Al hacer otro enrolamiento cambia la galeria; la transferencia de ese umbral debe comprobarse y la prueba en vivo no sustituye una nueva evaluacion formal. No ajustar el umbral mirando evaluacion y presentar luego ese mismo video como prueba independiente.
+
+Para volver a la referencia habitual:
+
+```bash
+python -m software.percepcion.practica --camara 0 --metodo histograma
+```
+
+En ese comando se conserva el umbral provisional historico .45 y margen .08; puede usarse --parametros auto para cargar la calibracion especifica del histograma.
+
+Verificacion de esta extension: 54 pruebas pasaron, incluida ventana con camara sintetica y pesos CNN oficiales reales (24 embeddings, aprobar sin iniciar movimiento, S inicia, perdida y recuperacion). Pruebas de importacion automatica de umbrales y rechazo si cambian pesos o no existe calibracion. GitHub y HU de Trello consultados; HU en Doing. Prueba con camara y persona reales pendiente en el NUC.

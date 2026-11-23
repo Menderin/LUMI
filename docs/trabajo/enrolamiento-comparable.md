@@ -112,3 +112,7 @@ Verificacion: pasaron 23 pruebas Python locales. La prueba por el punto de entra
 El nuevo comando python -m software.percepcion.guiada encadena captura y comparacion. Ver [bateria guiada](bateria-guiada.md). El modo --solo permite medir con una persona e informa que falta validar distractores.
 
 Actualizacion de anotacion: los recuadros se agregan al soltar el raton y la lista se confirma con boton o Espacio. Esc interrumpe; Escena vacia o 0 confirma ausencia. Ver la guia de bateria guiada.
+
+## CNN en vivo, extension 2026-11-23
+
+Usar --metodo cnn_reid --parametros auto para probar el encoder congelado con umbrales de la ultima corrida CNN. Ver [instrucciones, datos guardados y limitaciones](cnn-reid.md#ejecutar-la-cnn-en-vivo). El detector OpenVINO sigue localizando personas y el histograma sigue siendo la opcion predeterminada.

@@ -277,6 +277,42 @@ def resumen(tiempos, segundos):
     }
 
 
+def cargar_parametros(args):
+    """Importa umbrales offline sin presentar una galeria nueva como ya calibrada."""
+    origen=getattr(args,"parametros",None)
+    if not origen:
+        return
+    if args.umbral is not None or args.margen is not None:
+        raise ValueError("Usa --parametros o --umbral/--margen, no ambos")
+    candidatos=(sorted(REPO.glob("datos/procesados/bateria-guiada-*/umbrales.json"),reverse=True)
+                if origen=="auto" else [Path(origen)])
+    for ruta in candidatos:
+        ficha=json.loads(ruta.read_text(encoding="utf-8-sig"))
+        if args.metodo not in ficha.get("metodos",{}):
+            if origen=="auto":
+                continue
+            raise ValueError(f"No hay parametros para {args.metodo} en {ruta}")
+        cfg=ficha["metodos"][args.metodo]
+        if not cfg.get("util",False):
+            raise ValueError(f"Calibracion {ruta}: metodo sin aciertos utiles; revisar antes de usar en vivo")
+        if args.metodo=="cnn_reid":
+            if ficha.get("modelos",{}).get("cnn_reid",{}).get("sha256")!=args.cnn["sha256"]:
+                raise ValueError("Los pesos CNN no coinciden con la calibracion")
+        args.umbral=float(cfg["umbral"])
+        args.margen=float(cfg["margen"])
+        args.parametros=str(ruta.resolve())
+        print(f"Parametros de {ruta}; un nuevo enrolamiento requiere validar su transferencia",flush=True)
+        return
+    raise ValueError(f"No se encontro calibracion para {args.metodo}; indica --parametros RUTA o --umbral")
+
+
+def modelos_en_vivo(muestras,args):
+    if getattr(args,"metodo","histograma")=="cnn_reid":
+        from .reid_openvino import ReIDOpenVINO
+        return {"cnn_reid":ReIDOpenVINO(muestras,args.cnn)}
+    return crear_identificadores(muestras,REPO)
+
+
 def practica(args, carpeta, guia=None):
     cv2.setNumThreads(1)
     if args.detector == "openvino":
@@ -418,7 +454,7 @@ def practica(args, carpeta, guia=None):
                     motivo = ("confirmando_reencuentro" if estado.estado == "perdido"
                               and sesion.recuperacion_simulada else "esperando_confirmacion")
                 imagen = dibujar(frame, cajas, distancias, objetivo, mensaje,
-                                 f"E enrolar | R repetir | C cancelar | S seguir | V video | Esc")
+                                 f"{getattr(args,'metodo','histograma')} | u={args.umbral:.3f} m={args.margen:.3f} | {motivo}")
                 orden = direccion.actualizar(
                     cajas[objetivo] if objetivo is not None else None, frame.shape[1],
                     buscando=estado.estado == "perdido" and sesion.recuperacion_simulada)
@@ -497,8 +533,8 @@ def practica(args, carpeta, guia=None):
                         break
                     if log_decision in (10, 13):
                         try:
-                            modelos = crear_identificadores(estado.muestras, REPO)
-                        except ValueError as error:
+                            modelos = modelos_en_vivo(estado.muestras,args)
+                        except (ValueError,RuntimeError) as error:
                             print(f"Enrolamiento fallido: {error}", flush=True)
                             sesion.fallar(f"Codificacion fallida: {error}")
                             tecla = -1
@@ -515,6 +551,7 @@ def practica(args, carpeta, guia=None):
                             "aprobada": True, "sesion": carpeta.name, "intento": estado.intentos,
                             "imagenes": [f"{i:02}.png" for i in range(1, len(estado.galeria) + 1)],
                             "metodos": list(modelos), "duracion_captura_s": sesion.duracion,
+                            "representaciones":{n:getattr(m,"metadata",{}) for n,m in modelos.items()},
                             "origen_recortes": informe_intento.get("seleccion", []),
                         })
                         print(f"Galeria aprobada: {destino}. Pulsa S para iniciar.", flush=True)
@@ -594,14 +631,31 @@ def main():
     parser.add_argument("--ancho", type=int, default=640)
     parser.add_argument("--alto", type=int, default=480)
     parser.add_argument("--fps", type=int, default=15)
-    parser.add_argument("--metodo", choices=["histograma", "euclidea", "mahalanobis"], default="histograma")
-    parser.add_argument("--umbral", type=float, help="Provisional en vivo; PCA requiere especificarlo")
+    parser.add_argument("--metodo", choices=["histograma", "euclidea", "mahalanobis", "cnn_reid"], default="histograma")
+    parser.add_argument("--parametros",help="umbrales.json offline o auto para ultima corrida con este metodo")
+    parser.add_argument("--modelo-cnn",help="XML oficial 0288 FP16; solo con --metodo cnn_reid")
+    parser.add_argument("--descargar-cnn",action="store_true")
+    parser.add_argument("--umbral", type=float, help="Provisional; PCA/CNN requieren umbral o --parametros")
     parser.add_argument("--hog-umbral", type=float, default=.5, help="Umbral SVM HOG, provisional")
-    parser.add_argument("--margen", type=float, default=.08, help="Valor provisional para piloto")
+    parser.add_argument("--margen", type=float, help="Valor provisional; por defecto .08 sin --parametros")
     args = parser.parse_args()
+    try:
+        if args.metodo=="cnn_reid":
+            from .reid_openvino import configuracion,descargar
+            ruta=Path(args.modelo_cnn) if args.modelo_cnn else None
+            if args.descargar_cnn:
+                ruta=descargar(ruta.parent) if ruta else descargar()
+            args.cnn=configuracion(ruta)
+        elif args.modelo_cnn or args.descargar_cnn:
+            raise ValueError("Las opciones CNN requieren --metodo cnn_reid")
+        cargar_parametros(args)
+    except (ValueError,OSError,KeyError) as error:
+        parser.error(str(error))
+    if args.margen is None:
+        args.margen=.08
     if args.umbral is None:
         if args.metodo != "histograma":
-            parser.error("Indica --umbral calibrado para PCA; las escalas son distintas")
+            parser.error("Indica --parametros auto, --parametros RUTA o --umbral para PCA/CNN; las escalas son distintas")
         args.umbral = .45
     if args.video and args.detector != "hog":
         parser.error("--video conserva la comparacion HOG; OpenVINO se prueba con --camara")
@@ -613,6 +667,7 @@ def main():
             or args.camara < 0 or args.ancho < 64 or args.alto < 128 or args.fps < 1
             or not math.isfinite(args.umbral) or args.umbral < 0
             or (args.metodo == "histograma" and args.umbral > 1)
+            or (args.metodo == "cnn_reid" and (args.umbral > 2 or args.margen > 2))
             or not math.isfinite(args.margen) or args.margen < 0):
         parser.error("Cámara, resolución, FPS, umbral o margen fuera de rango")
     carpeta = REPO / "datos" / "enrolamientos" / datetime.now().strftime("practica-%Y%m%d-%H%M%S-%f")

@@ -57,3 +57,35 @@ class EncoderCNN(unittest.TestCase):
                 ruta.unlink()
                 with self.assertRaisesRegex(ValueError,"Faltan pesos"):
                     validar_pesos(ruta)
+
+
+class ParametrosEnVivo(unittest.TestCase):
+    def test_ultima_calibracion_y_pesos_coincidentes(self):
+        import json
+        from types import SimpleNamespace
+        from software.percepcion.practica import cargar_parametros
+        with tempfile.TemporaryDirectory() as carpeta:
+            root=Path(carpeta)
+            salida=root/"datos/procesados/bateria-guiada-20261123-1"
+            salida.mkdir(parents=True)
+            cfg={"metodos":{"cnn_reid":{"umbral":.23,"margen":.04,"util":True}},
+                 "modelos":{"cnn_reid":{"sha256":{"xml":"a","bin":"b"}}}}
+            (salida/"umbrales.json").write_text(json.dumps(cfg))
+            args=SimpleNamespace(parametros="auto",metodo="cnn_reid",umbral=None,margen=None,
+                                 cnn={"sha256":{"xml":"a","bin":"b"}})
+            with patch("software.percepcion.practica.REPO",root):
+                cargar_parametros(args)
+            self.assertEqual((args.umbral,args.margen),(.23,.04))
+            args.umbral=args.margen=None
+            args.cnn["sha256"]["bin"]="otro"
+            with self.assertRaisesRegex(ValueError,"pesos CNN"):
+                cargar_parametros(args)
+
+    def test_no_fabrica_umbral_si_no_hay_calibracion(self):
+        from types import SimpleNamespace
+        from software.percepcion.practica import cargar_parametros
+        with tempfile.TemporaryDirectory() as carpeta:
+            args=SimpleNamespace(parametros="auto",metodo="cnn_reid",umbral=None,margen=None)
+            with patch("software.percepcion.practica.REPO",Path(carpeta)):
+                with self.assertRaisesRegex(ValueError,"No se encontro"):
+                    cargar_parametros(args)

@@ -45,7 +45,7 @@ class FlujoEnrolamiento(unittest.TestCase):
         self.assertFalse(s.accion("reanudar", 18, objetivo=False))
         self.assertTrue(s.accion("reanudar", 19, objetivo=True))
 
-    def test_ventana_confirma_y_espera_orden_de_inicio(self):
+    def test_ventana_confirma_y_espera_orden_de_inicio(self,metodo="histograma"):
         from software.percepcion.practica import practica
         sesion = SesionEnrolamiento(desde_video=True, recuperacion_simulada=True)
         reloj = {"ahora": 0, "frame": 0, "listo": 0, "occlusion": False}
@@ -76,7 +76,11 @@ class FlujoEnrolamiento(unittest.TestCase):
         camara.get.return_value = 15
         camara.read.side_effect = leer_frame
         args = SimpleNamespace(detector="hog", hog_umbral=.5, fps=15, fps_proceso=10,
-                               umbral=.45, margen=.08, metodo="histograma")
+                               umbral=.45, margen=.08, metodo=metodo)
+        if metodo=="cnn_reid":
+            import os
+            from software.percepcion.reid_openvino import configuracion
+            args.cnn=configuracion(os.environ["LUMI_REID_XML"])
         with tempfile.TemporaryDirectory() as destino:
             with patch("software.percepcion.practica.SesionEnrolamiento", return_value=sesion), \
                  patch("software.percepcion.practica.abrir_camara", return_value=camara), \
@@ -101,12 +105,23 @@ class FlujoEnrolamiento(unittest.TestCase):
                 if r["estado"] == "listo":
                     self.assertEqual(r["intencion"], "Detener / sin objetivo")
             self.assertTrue((Path(destino)/"galeria-1"/"galeria.json").is_file())
-            a = np.load(Path(destino)/"galeria-1"/"euclidea.npz")
-            b = np.load(Path(destino)/"galeria-1"/"mahalanobis.npz")
-            with a, b:
-                np.testing.assert_array_equal(a["componentes"], b["componentes"])
+            if metodo=="cnn_reid":
+                with np.load(Path(destino)/"galeria-1"/"cnn_reid.npz") as datos:
+                    self.assertEqual(datos["galeria"].shape,(24,256))
+                self.assertFalse((Path(destino)/"galeria-1"/"euclidea.npz").exists())
+            else:
+                a = np.load(Path(destino)/"galeria-1"/"euclidea.npz")
+                b = np.load(Path(destino)/"galeria-1"/"mahalanobis.npz")
+                with a, b:
+                    np.testing.assert_array_equal(a["componentes"], b["componentes"])
             self.assertEqual(sesion.registro.intentos, 1)
             self.assertEqual(len(sesion.registro.galeria), 24)
+
+    def test_ventana_cnn_con_pesos_reales_si_disponibles(self):
+        import os
+        if not os.environ.get("LUMI_REID_XML"):
+            self.skipTest("Falta LUMI_REID_XML para inferencia real sin descargar")
+        self.test_ventana_confirma_y_espera_orden_de_inicio(metodo="cnn_reid")
 
     def test_limite_cancelacion_y_repeticion(self):
         s = SesionEnrolamiento()

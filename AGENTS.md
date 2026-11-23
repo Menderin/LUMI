@@ -51,4 +51,4 @@ Para la bateria integrada de tres metodos leer [asistente guiado](docs/trabajo/b
 
 Para el cuarto experimento probabilistico leer [CC-PPCA corporal](docs/trabajo/cc-ppca.md). La clase negativa procede de otra galeria aprobada e independiente de calibracion/evaluacion. No fabricar resultados cuando falten clases ni usar la evaluacion para ajustar el modelo.
 
-Para comparar CNN con los mismos recortes leer [CNN Re-ID](docs/trabajo/cnn-reid.md). Encoder preentrenado congelado, pesos oficiales verificados, galeria fija y calibracion separada. La comparacion offline no habilita actuacion ni cambia el identificador de la demo en vivo.
+Para comparar CNN con los mismos recortes leer [CNN Re-ID](docs/trabajo/cnn-reid.md). Encoder preentrenado congelado, pesos oficiales verificados, galeria fija y calibracion separada. La comparacion offline y la opcion explicita --metodo cnn_reid en vivo no habilitan actuacion; histograma sigue siendo el predeterminado.
