@@ -28,12 +28,16 @@ def recortar(frame, caja):
     return frame[y:b, x:r]
 
 
-def gris(imagen, alto):
+def gris(imagen, alto, preproceso='ninguno'):
     h, w = imagen.shape[:2]
     ancho = alto // 2
     escala = min(alto / h, ancho / w)
     ajuste = cv2.resize(cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY),
                         (max(1, round(w*escala)), max(1, round(h*escala))))
+    if preproceso == "eqhist":
+        ajuste = cv2.equalizeHist(ajuste)
+    elif preproceso != "ninguno":
+        raise ValueError("Preprocesamiento PCA desconocido")
     lienzo = np.zeros((alto, ancho), np.float32)
     y, x = (alto-ajuste.shape[0])//2, (ancho-ajuste.shape[1])//2
     lienzo[y:y+ajuste.shape[0], x:x+ajuste.shape[1]] = ajuste / 255
@@ -62,6 +66,10 @@ class Identificador:
     def __init__(self, muestras, cfg, base, proyeccion=None):
         self.metodo = cfg["metodo"]
         self.alto = cfg.get("alto", 128)
+        self.preproceso = cfg.get("preproceso","ninguno")
+        self.max_componentes = cfg.get("componentes",8)
+        if self.alto < 2 or self.max_componentes < 1 or self.preproceso not in ("ninguno","eqhist"):
+            raise ValueError("Parametros de preprocesamiento/PCA invalidos")
         self.encoder = None
         if self.metodo == "reid":
             self.alto = cfg.get("alto", 256)
@@ -77,13 +85,14 @@ class Identificador:
                 centrado = vectores - self.media
                 _, valores, base_pca = np.linalg.svd(centrado, full_matrices=False)
                 tolerancia = valores.max() * max(centrado.shape) * np.finfo(valores.dtype).eps
-                k = min(8, int(np.count_nonzero(valores > tolerancia)))
+                k = min(self.max_componentes, int(np.count_nonzero(valores > tolerancia)))
                 if not k:
                     raise ValueError("Galería sin variación suficiente para PCA")
                 self.componentes = base_pca[:k]
             else:
-                if self.alto != proyeccion.alto:
-                    raise ValueError("Resoluciones PCA diferentes")
+                if (self.alto != proyeccion.alto or self.preproceso != proyeccion.preproceso
+                        or self.max_componentes != proyeccion.max_componentes):
+                    raise ValueError("Configuraciones PCA diferentes")
                 self.media = proyeccion.media.copy()
                 self.componentes = proyeccion.componentes.copy()
                 centrado = vectores - self.media
@@ -92,6 +101,9 @@ class Identificador:
                 from sklearn.covariance import LedoitWolf
                 self.precision = LedoitWolf().fit(vectores).precision_
         self.galeria = vectores
+        self.metadata = {"metodo":self.metodo,"alto":self.alto,
+                         "preproceso":self.preproceso,"max_componentes":self.max_componentes,
+                         "componentes_reales":int(self.componentes.shape[0]) if hasattr(self,"componentes") else None}
 
     def vector(self, imagen):
         if self.metodo == "histograma":
@@ -108,7 +120,7 @@ class Identificador:
             if not np.isfinite(norma) or norma == 0:
                 raise ValueError("Embedding inválido")
             return valor / norma
-        return gris(imagen, self.alto)
+        return gris(imagen, self.alto,self.preproceso)
 
     def distancia(self, imagen):
         x = self.vector(imagen)
@@ -122,21 +134,31 @@ class Identificador:
         return float(np.linalg.norm(delta, axis=1).min())
 
 
-def crear_identificadores(muestras, base, alto=128):
+def crear_identificadores(muestras, base, alto=128, perfiles_pca=None):
     from threadpoolctl import threadpool_limits
     with threadpool_limits(limits=2):
-        euclidea = Identificador(muestras, {"metodo": "euclidea", "alto": alto}, base)
-        return {
-            "histograma": Identificador(muestras, {"metodo": "histograma"}, base),
-            "euclidea": euclidea,
-            "mahalanobis": Identificador(
-                muestras, {"metodo": "mahalanobis", "alto": alto}, base, proyeccion=euclidea),
-        }
+        perfiles = {"": {"alto":alto,"preproceso":"ninguno","componentes":8}}
+        for nombre,cfg in (perfiles_pca or {}).items():
+            if not nombre or not nombre.replace("_","").isalnum():
+                raise ValueError("Nombre de perfil PCA invalido")
+            perfiles[nombre] = cfg
+        resultado = {"histograma":Identificador(muestras,{"metodo":"histograma"},base)}
+        for nombre,cfg in perfiles.items():
+            sufijo = f"_{nombre}" if nombre else ""
+            euclidea = Identificador(muestras,{**cfg,"metodo":"euclidea"},base)
+            resultado["euclidea"+sufijo] = euclidea
+            resultado["mahalanobis"+sufijo] = Identificador(
+                muestras,{**cfg,"metodo":"mahalanobis"},base,proyeccion=euclidea)
+        return resultado
 
 
 def guardar_representacion(modelo, ruta):
+    if modelo.metodo == "cc_ppca":
+        modelo.guardar(ruta)
+        return
     valores = {"metodo": np.array(modelo.metodo), "alto": np.array(modelo.alto),
-               "galeria": modelo.galeria}
+               "galeria": modelo.galeria, "preproceso": np.array(modelo.preproceso),
+               "max_componentes":np.array(modelo.max_componentes)}
     for clave in ("media", "componentes", "precision"):
         if hasattr(modelo, clave):
             valores[clave] = getattr(modelo, clave)

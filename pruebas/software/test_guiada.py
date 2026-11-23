@@ -161,8 +161,11 @@ class BateriaGuiada(unittest.TestCase):
             self.assertIn("Limitacion:",(salida/"informe.md").read_text())
             with (salida/"comparacion.csv").open() as f:
                 filas=list(csv.DictReader(f))
-            self.assertEqual(len(filas),3)
-            self.assertEqual({r["repeticiones"] for r in filas},{"2"})
+            self.assertEqual(len(filas),4)
+            self.assertEqual({r["repeticiones"] for r in filas if r["estado"] == "evaluado"},{"2"})
+            pendiente=next(r for r in filas if r["metodo"] == "cc_ppca")
+            self.assertEqual(pendiente["estado"],"pendiente")
+            self.assertEqual(pendiente["correctos"],"")
             self.assertTrue(json.loads((salida/"recomendacion.json").read_text())["decisiones_equivalentes"])
 
     @staticmethod

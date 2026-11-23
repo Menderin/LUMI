@@ -14,7 +14,7 @@ from software.control.direccion_simulada import DireccionSimulada
 from software.percepcion.enrolamiento.sesion import SesionEnrolamiento
 from software.percepcion.experimentos import crear_identificadores
 from software.percepcion.comparar_sesion import (
-    preparar, calibrar, evaluar, elegir_parametros, evaluar_puntuaciones, sha256,
+    preparar, calibrar, evaluar, elegir_parametros, evaluar_puntuaciones, sha256, clonar_con_negativa,
 )
 from software.percepcion.practica import Video, guardar_json
 
@@ -225,6 +225,52 @@ class Comparacion(unittest.TestCase):
             self.assertEqual(len(registros),3)
             self.assertEqual({r["revisados"] for r in registros},{"3"})
             self.assertTrue((root/"resultado"/"recomendacion.json").is_file())
+            self.assertEqual(json.loads((root/"resultado"/"cc_ppca.json").read_text())["estado"],"pendiente")
+            negativa=root/"otra-sesion"/"galeria-1"
+            negativa.mkdir(parents=True)
+            for i,imagen in enumerate(muestras(),1):
+                cv2.imwrite(str(negativa/f"{i:02}.png"),imagen[:,:,::-1])
+            guardar_json(negativa/"galeria.json",{"aprobada":True,"intento":1,
+                         "imagenes":[f"{i:02}.png" for i in range(1,9)]})
+            guardar_video(negativa.parent/"enrolamiento-1.avi",[muestras()[0][:,:,::-1].copy()])
+            cache4=root/"cache4"
+            clonar_con_negativa(cache,negativa,cache4)
+            cfg4=root/"congelada4.json"
+            calibrar(cache4,cfg4)
+            evaluar(cache4,cfg4,root/"resultado4")
+            with (root/"resultado4"/"comparacion.csv").open() as f:
+                self.assertEqual(len(list(csv.DictReader(f))),4)
+            cc=json.loads((root/"resultado4"/"cc_ppca.json").read_text())
+            self.assertEqual(cc["modelo"]["modelo"],"CC-PPCA/NBC corporal")
+            self.assertTrue((cache4/"cc_ppca.npz").is_file())
+            from software.percepcion.guiada import informe
+            (root/"informe4").mkdir()
+            informe(root/"informe4",[root/"resultado4"],solo=False)
+            with (root/"informe4"/"comparacion.csv").open() as f:
+                cuatro=list(csv.DictReader(f))
+            self.assertEqual(len(cuatro),4)
+            self.assertEqual({r["estado"] for r in cuatro},{"evaluado"})
+            self.assertIn("## cc_ppca",(root/"informe4"/"informe.md").read_text())
+
+            from software.percepcion.comparar_sesion import clonar_con_mejoras
+            cache6=root/"cache6"
+            clonar_con_mejoras(cache4,cache6)
+            with self.assertRaises(ValueError):
+                evaluar(cache6,cfg4,root/"umbrales-antiguos")
+            cfg6=root/"congelada6.json"
+            calibrar(cache6,cfg6)
+            evaluar(cache6,cfg6,root/"resultado6")
+            with (root/"resultado6"/"comparacion.csv").open() as f:
+                seis=list(csv.DictReader(f))
+            self.assertEqual({r["metodo"] for r in seis},
+                {"histograma","euclidea","mahalanobis","cc_ppca","euclidea_eqhist","mahalanobis_eqhist"})
+            (root/"informe6").mkdir()
+            informe(root/"informe6",[root/"resultado6"],solo=False)
+            self.assertIn("## euclidea_eqhist",(root/"informe6"/"informe.md").read_text())
+
+            cv2.imwrite(str(cache4/"galeria-negativa"/"00.png"),np.zeros((128,64,3),np.uint8))
+            with self.assertRaisesRegex(ValueError,"negativa cambio"):
+                evaluar(cache4,cfg4,root/"resultado5")
             cv2.imwrite(str(cache/"galeria"/"00.png"),np.zeros((128,64,3),np.uint8))
             with self.assertRaisesRegex(ValueError,"galeria cambio"):
                 evaluar(cache,cfg,root/"resultado2")

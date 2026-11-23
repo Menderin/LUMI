@@ -1,4 +1,4 @@
-"""Una captura guiada, anotacion humana y comparacion de tres identificadores."""
+"""Una captura guiada y comparacion de identificadores, con CC-PPCA opcional."""
 import argparse
 import csv
 import json
@@ -12,7 +12,7 @@ import cv2
 from threadpoolctl import threadpool_limits
 
 from .anotar_practica import anotar
-from .comparar_sesion import preparar, calibrar, evaluar, leer
+from .comparar_sesion import preparar, calibrar, evaluar, leer, PERFILES_MEJORA_PCA
 from .practica import REPO, practica, guardar_json
 
 ESCENAS = [
@@ -135,6 +135,12 @@ def validar_anotaciones(ruta, split, escenario):
 
 
 VENTAJAS = {
+    "euclidea_eqhist": ("PCA Euclidea con contraste gris ecualizado antes del relleno.", "Puede amplificar ruido y no elimina cambios de pose, fondo o identidad."),
+    "mahalanobis_eqhist": ("Misma proyeccion ecualizada que Euclidea, con covarianza regularizada.", "La ecualizacion y pocas muestras pueden alterar la covarianza; requiere calibracion propia."),
+    "cc_ppca": (
+        "Modelos probabilisticos por clase, con ruido estimado y puntuacion gaussiana en latentes.",
+        "Necesita ejemplos de otra persona; los supuestos gaussianos y el recorte corporal deben validarse.",
+    ),
     "histograma": (
         "Descriptor de color sencillo; permite inspeccionar que colores se comparan.",
         "Ropa similar, fondo e iluminacion pueden producir confusiones.",
@@ -156,9 +162,11 @@ def informe(salida, corridas, solo):
     equivalentes = True
     for corrida in corridas:
         with (corrida / "comparacion.csv").open(encoding="utf-8",newline="") as archivo:
-            for fila in csv.DictReader(archivo):
-                por_metodo.setdefault(fila["metodo"],[]).append(fila)
-        for nombre in VENTAJAS:
+            filas_actuales=list(csv.DictReader(archivo))
+        for fila in filas_actuales:
+            por_metodo.setdefault(fila["metodo"],[]).append(fila)
+        for fila_actual in filas_actuales:
+            nombre=fila_actual["metodo"]
             with (corrida / f"{nombre}-frames.jsonl").open(encoding="utf-8") as archivo:
                 decisiones = [(r["secuencia"],r["frame"],r["seleccion"]) for r in map(json.loads,archivo)]
             if nombre in selecciones and selecciones[nombre] != decisiones:
@@ -167,6 +175,8 @@ def informe(salida, corridas, solo):
     agregados = []
     for nombre, filas in por_metodo.items():
         fila = dict(filas[0])
+        fila["estado"]="evaluado"
+        fila["motivo"]=""
         for clave in ("p95_ms","cpu_proceso_pct_total","duracion_s"):
             fila[clave] = statistics.median(float(r[clave]) for r in filas)
         fila["rss_max_bytes"] = max(int(r["rss_max_bytes"]) for r in filas)
@@ -178,6 +188,16 @@ def informe(salida, corridas, solo):
         -float(r["peor_acierto_visible"]),float(r["p95_ms"]),
         float(r["cpu_proceso_pct_total"]),int(r["rss_max_bytes"]),
     ))
+    if "cc_ppca" not in por_metodo:
+        ficha_pendiente=leer(corridas[0]/"cc_ppca.json") if (corridas[0]/"cc_ppca.json").exists() else {
+            "motivo":"CC-PPCA no incluido en estas corridas anteriores"}
+        fila_pendiente={clave:"" for clave in agregados[0]}
+        fila_pendiente.update({"metodo":"cc_ppca","estado":"pendiente",
+                              "motivo":ficha_pendiente["motivo"],"descartado_integracion":"True",
+                              "repeticiones":0,
+                              "ventaja_teorica":VENTAJAS["cc_ppca"][0],
+                              "limitacion_teorica":VENTAJAS["cc_ppca"][1]})
+        agregados.append(fila_pendiente)
     with (salida / "comparacion.csv").open("w",encoding="utf-8",newline="") as archivo:
         writer=csv.DictWriter(archivo,fieldnames=list(agregados[0]))
         writer.writeheader()
@@ -196,6 +216,9 @@ def informe(salida, corridas, solo):
               "| Metodo | Aciertos / visibles | Falsas acept. / ausentes | Sustituciones (frames) | Peor acierto | p95 ms* | CPU identificador % | RSS MiB |",
               "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for r in agregados:
+        if r["estado"] == "pendiente":
+            lineas.append(f"| {r['metodo']} (pendiente) | - | - | - | - | - | - | - |")
+            continue
         lineas.append(
             f"| {r['metodo']} | {r['correctos']}/{r['visibles']} | {r['falsas_aceptaciones']}/{r['ausentes']} | "
             f"{r['sustituciones_frames']} | {float(r['peor_acierto_visible']):.1%} | "
@@ -207,7 +230,12 @@ def informe(salida, corridas, solo):
                "Repetir el mismo video verifica estabilidad, sin aumentar el numero de participantes ni tomas.",
                "Las ventajas y limitaciones siguientes son teoricas; comprobarlas con estos resultados.", ""]
     for nombre,(ventaja,limitacion) in VENTAJAS.items():
+        if not any(r["metodo"] == nombre for r in agregados):
+            continue
         lineas += [f"## {nombre}", "", f"Ventaja: {ventaja}", "", f"Limitacion: {limitacion}", ""]
+        pendiente=next((r for r in agregados if r["metodo"] == nombre and r["estado"] == "pendiente"),None)
+        if pendiente:
+            lineas += [f"Estado pendiente: {pendiente['motivo']}", ""]
     lineas += ["## Pendientes", "",
                "Validar transiciones interior/exterior, participantes adicionales y funcionamiento fisico.",
                "Las intenciones de direccion del piloto son simuladas.",
@@ -215,7 +243,7 @@ def informe(salida, corridas, solo):
     (salida/"informe.md").write_text("\n".join(lineas)+"\n",encoding="utf-8")
 
 
-def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar):
+def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar, galeria_negativa=None, mejorar_pca=False):
     guia = leer(carpeta/"guia.json")
     if not guia["terminada"] or guia["cancelada"]:
         raise ValueError("Captura incompleta. Los archivos se conservaron; falta completar la bateria")
@@ -224,7 +252,9 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar):
     marca = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     salida = REPO/"datos/procesados"/f"bateria-guiada-{marca}"
     salida.mkdir(parents=True)
-    guardar_json(salida/"sesion.json", {"origen":str(carpeta),"guia":guia,"repeticiones":repeticiones,"paso_revision":paso})
+    guardar_json(salida/"sesion.json", {"origen":str(carpeta),"guia":guia,"repeticiones":repeticiones,"paso_revision":paso,"mejorar_pca":mejorar_pca,
+                                                 "galeria_negativa":str(galeria_negativa) if galeria_negativa else None})
+    perfiles = PERFILES_MEJORA_PCA if mejorar_pca else None
     videos = {}
     with threadpool_limits(limits=2):
         # No se usa la evaluacion para elegir umbrales.
@@ -244,15 +274,16 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar):
             if not videos[split]:
                 raise ValueError(f"Faltan clips de {split}")
             if split == "calibracion":
-                preparar(galeria,salida/"cache-calibracion",videos[split])
+                preparar(galeria,salida/"cache-calibracion",videos[split],galeria_negativa=galeria_negativa,perfiles_pca=perfiles)
                 calibrar(salida/"cache-calibracion",salida/"umbrales.json",
                          permitir_sin_distractores=solo)
                 print("Parametros congelados. Ahora revisaremos la evaluacion.",flush=True)
-        preparar(galeria,salida/"cache-completa",videos["calibracion"]+videos["evaluacion"])
+        preparar(galeria,salida/"cache-completa",videos["calibracion"]+videos["evaluacion"],
+                 galeria_negativa=galeria_negativa,perfiles_pca=perfiles)
         corridas = []
         for i in range(repeticiones):
             corrida = salida/f"repeticion-{i+1:02}"
-            print(f"Comparando los tres metodos: repeticion {i+1}/{repeticiones}",flush=True)
+            print(f"Comparando metodos disponibles: repeticion {i+1}/{repeticiones}",flush=True)
             evaluar(salida/"cache-completa",salida/"umbrales.json",corrida)
             corridas.append(corrida)
         informe(salida,corridas,solo)
@@ -263,6 +294,9 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--camara",type=int,default=0)
+    parser.add_argument("--galeria-negativa",type=Path,
+                        help="Galeria aprobada de OTRA persona, independiente de calibracion/evaluacion")
+    parser.add_argument("--mejorar-pca",action="store_true",help="Comparar PCA originales y ecualizados con los mismos datos")
     parser.add_argument("--solo",action="store_true",help="Piloto sin distractor; informe sin ganador de identidad")
     parser.add_argument("--continuar",type=Path,help="Reanudar anotacion/analisis de una captura guiada completa")
     parser.add_argument("--descargar-modelo",action="store_true")
@@ -291,7 +325,9 @@ def main():
             if not guia.terminada or guia.cancelada:
                 print(f"Captura interrumpida. Datos conservados en {carpeta}",flush=True)
                 return
-        analizar(carpeta,repeticiones=args.repeticiones,paso=args.paso_revision)
+        analizar(carpeta,repeticiones=args.repeticiones,paso=args.paso_revision,
+                 galeria_negativa=args.galeria_negativa.resolve() if args.galeria_negativa else None,
+                 mejorar_pca=args.mejorar_pca)
     except (ValueError,OSError,KeyError,RuntimeError,cv2.error) as error:
         parser.exit(1,f"Error: {error}\nDatos: {carpeta}\nPara reanudar revision: --continuar {carpeta}\n")
 

@@ -1,4 +1,4 @@
-"""Comparacion de tres identificadores con detecciones compartidas y etiquetas humanas."""
+"""Comparacion de identificadores con detecciones compartidas y etiquetas humanas."""
 import argparse
 import csv
 import hashlib
@@ -15,7 +15,7 @@ import psutil
 from .experimentos import crear_identificadores, guardar_representacion, iou, recortar
 from .practica import guardar_json, resolver
 
-METODOS = ("histograma", "euclidea", "mahalanobis")
+PERFILES_MEJORA_PCA = {"eqhist":{"alto":128,"preproceso":"eqhist","componentes":8}}
 
 
 def sha256(ruta):
@@ -33,10 +33,64 @@ def leer(ruta):
 def firma_calibracion(cache):
     contenido = {"galeria_sha256": cache["galeria_sha256"],
                  "frames": [r for r in cache["frames"] if r["split"] == "calibracion"]}
+    if cache.get("perfiles_pca"):
+        contenido["perfiles_pca"] = cache["perfiles_pca"]
+    if cache.get("negativa_sha256"):
+        contenido["negativa_sha256"] = cache["negativa_sha256"]
     return hashlib.sha256(json.dumps(contenido, sort_keys=True).encode()).hexdigest()
 
 
-def preparar(galeria, salida, videos):
+def agregar_negativa(cache_dir, cache, galeria):
+    ficha = leer(galeria / "galeria.json")
+    if not ficha.get("aprobada") or not 8 <= len(ficha["imagenes"]) <= 24:
+        raise ValueError("La galeria negativa debe estar aprobada y tener 8-24 recortes de OTRA persona")
+    origen_video = galeria.parent / f"enrolamiento-{ficha['intento']}.avi"
+    marca_video = sha256(origen_video)
+    if marca_video == cache.get("enrolamiento_sha256"):
+        raise ValueError("La galeria negativa usa el mismo video de enrolamiento del objetivo")
+    if marca_video in {v["sha256"] for v in cache["videos"]}:
+        raise ValueError("La galeria negativa proviene de calibracion/evaluacion")
+    archivos = []
+    for nombre in ficha["imagenes"]:
+        ruta = (galeria / nombre).resolve()
+        if ruta.parent != galeria.resolve():
+            raise ValueError("Recorte negativo fuera de su galeria")
+        marca = sha256(ruta)
+        if marca in cache["galeria_sha256"]:
+            raise ValueError("La clase negativa contiene un recorte del objetivo")
+        archivos.append((ruta,marca))
+    destino=cache_dir/"galeria-negativa"
+    destino.mkdir()
+    for i,(ruta,_) in enumerate(archivos):
+        shutil.copyfile(ruta,destino/f"{i:02}.png")
+    cache["negativa_sha256"] = [marca for _,marca in archivos]
+    cache["negativa_origen"] = {"galeria":str(galeria),"video_sha256":marca_video,
+                               "rol":"otra persona declarada por el operador"}
+
+
+def clonar_con_negativa(cache_dir, galeria_negativa, salida):
+    if salida.exists():
+        raise ValueError("Usa una carpeta de cache nueva")
+    cache=leer(cache_dir/"cache.json")
+    comprobar_cache(cache_dir,cache)
+    if cache.get("negativa_sha256"):
+        raise ValueError("La cache ya tiene clase negativa")
+    shutil.copytree(cache_dir,salida)
+    agregar_negativa(salida,cache,galeria_negativa)
+    guardar_json(salida/"cache.json",cache)
+
+
+def clonar_con_mejoras(cache_dir, salida):
+    if salida.exists():
+        raise ValueError("Usa una cache de salida nueva")
+    cache=leer(cache_dir/"cache.json")
+    comprobar_cache(cache_dir,cache)
+    shutil.copytree(cache_dir,salida)
+    cache["perfiles_pca"]=PERFILES_MEJORA_PCA
+    guardar_json(salida/"cache.json",cache)
+
+
+def preparar(galeria, salida, videos, *, galeria_negativa=None, perfiles_pca=None):
     if salida.exists():
         raise ValueError("La salida debe ser nueva para conservar corridas anteriores")
     ficha = leer(galeria / "galeria.json")
@@ -46,7 +100,8 @@ def preparar(galeria, salida, videos):
     videos_info = []
     vistos = set()
     enrolamiento = galeria.parent / f"enrolamiento-{ficha['intento']}.avi"
-    vistos.add(sha256(enrolamiento))
+    marca_enrolamiento=sha256(enrolamiento)
+    vistos.add(marca_enrolamiento)
     for video in videos:
         marca = sha256(video)
         if marca in vistos:
@@ -68,7 +123,8 @@ def preparar(galeria, salida, videos):
             raise ValueError("Ruta de recorte fuera de la galeria")
         hashes.append(sha256(original))
         shutil.copyfile(original, destino_galeria / f"{i:02}.png")
-    cache = {"galeria_sha256": hashes, "frames": [], "videos": [],
+    cache = {"galeria_sha256": hashes, "enrolamiento_sha256":marca_enrolamiento,
+             "frames": [], "videos": [],
              "versiones": {"opencv": cv2.__version__, "numpy": np.__version__}}
     for video, marca, anotaciones in videos_info:
         with (video.parent / "decisiones.csv").open(encoding="utf-8-sig", newline="") as archivo:
@@ -124,6 +180,10 @@ def preparar(galeria, salida, videos):
             "sha256": marca, "origen": str(video), "split": anotaciones["split"],
             "configuracion_captura": leer(config_origen) if config_origen.exists() else None,
         })
+    if perfiles_pca:
+        cache["perfiles_pca"]=perfiles_pca
+    if galeria_negativa is not None:
+        agregar_negativa(salida,cache,galeria_negativa)
     guardar_json(salida / "cache.json", cache)
 
 
@@ -132,6 +192,9 @@ def comprobar_cache(cache_dir, cache):
     for i, esperado in enumerate(cache["galeria_sha256"]):
         if sha256(cache_dir / "galeria" / f"{i:02}.png") != esperado:
             raise ValueError("La galeria cambio despues de preparar")
+    for i,esperado in enumerate(cache.get("negativa_sha256",[])):
+        if sha256(cache_dir/"galeria-negativa"/f"{i:02}.png") != esperado:
+            raise ValueError("La galeria negativa cambio despues de preparar")
     for r in cache["frames"]:
         for candidato in r["candidatos"]:
             ruta = (cache_dir / candidato["imagen"]).resolve()
@@ -139,11 +202,27 @@ def comprobar_cache(cache_dir, cache):
                 raise ValueError("Un recorte cambio despues de preparar")
 
 
-def modelos(cache_dir):
+def modelos(cache_dir, *, incidencias=None):
     muestras = [cv2.imread(str(ruta)) for ruta in sorted((cache_dir / "galeria").glob("*.png"))]
     if any(m is None for m in muestras):
         raise ValueError("Recorte de galeria ilegible")
-    return crear_identificadores(muestras, cache_dir)
+    cache=leer(cache_dir/"cache.json")
+    resultado = crear_identificadores(muestras,cache_dir,perfiles_pca=cache.get("perfiles_pca"))
+    motivo = "Falta galeria aprobada de otra persona para la segunda clase"
+    if cache.get("negativa_sha256"):
+        from .cc_ppca import CCPPCA
+        negativos=[cv2.imread(str(cache_dir/"galeria-negativa"/f"{i:02}.png"))
+                   for i in range(len(cache["negativa_sha256"]))]
+        if any(m is None for m in negativos):
+            raise ValueError("Recorte de clase negativa ilegible")
+        try:
+            resultado["cc_ppca"]=CCPPCA(muestras,negativos)
+            motivo=None
+        except ValueError as error:
+            motivo=str(error)
+    if incidencias is not None and motivo:
+        incidencias["cc_ppca"]=motivo
+    return resultado
 
 
 def puntuar(cache_dir, frames, modelo):
@@ -219,7 +298,9 @@ def evaluar_puntuaciones(filas, umbral, margen):
 
 
 def elegir_parametros(filas, *, exigir_distractor=True):
-    valores = [-1.0] + [d for r in filas for d in r["distancias"] if np.isfinite(d)]
+    observados = [d for r in filas for d in r["distancias"] if np.isfinite(d)]
+    rechazo_total = min(-1.,float(np.nextafter(min(observados),-np.inf))) if observados else -1.
+    valores = [rechazo_total] + observados
     umbrales = np.unique(np.quantile(valores, np.linspace(0, 1, min(24, len(valores)))))
     diferencias = [sorted(r["distancias"])[1]-sorted(r["distancias"])[0]
                    for r in filas if len(r["distancias"]) >= 2]
@@ -258,7 +339,12 @@ def calibrar(cache_dir, destino, *, permitir_sin_distractores=False):
     frames = [r for r in cache["frames"] if r["split"] == "calibracion"]
     configuracion = {"piloto_sin_distractores": permitir_sin_distractores, "calibracion_sha256": firma_calibracion(cache),
                      "galeria_sha256": cache["galeria_sha256"], "metodos": {}}
-    for nombre, modelo in modelos(cache_dir).items():
+    incidencias={}
+    disponibles=modelos(cache_dir,incidencias=incidencias)
+    configuracion["pendientes"]=incidencias
+    configuracion["modelos"]={}
+    for nombre, modelo in disponibles.items():
+        configuracion["modelos"][nombre]=getattr(modelo,"metadata",{})
         filas, _ = puntuar(cache_dir, frames, modelo)
         configuracion["metodos"][nombre] = elegir_parametros(filas, exigir_distractor=not permitir_sin_distractores)
         guardar_representacion(modelo, cache_dir / f"{nombre}.npz")
@@ -281,7 +367,13 @@ def evaluar(cache_dir, configuracion, salida):
         raise ValueError("La salida debe ser nueva")
     salida.mkdir(parents=True)
     totales = []
-    for nombre, modelo in modelos(cache_dir).items():
+    for nombre, motivo in cfg.get("pendientes",{}).items():
+        guardar_json(salida/f"{nombre}.json",{"estado":"pendiente","motivo":motivo})
+    disponibles=modelos(cache_dir)
+    for nombre in cfg["metodos"]:
+        if nombre not in disponibles:
+            raise ValueError(f"Modelo calibrado no disponible: {nombre}")
+        modelo=disponibles[nombre]
         filas, recursos = puntuar(cache_dir, frames, modelo)
         parametros = cfg["metodos"][nombre]
         informe, decisiones = evaluar_puntuaciones(filas, parametros["umbral"], parametros["margen"])
@@ -294,6 +386,7 @@ def evaluar(cache_dir, configuracion, salida):
         informe.update({
             "cache_sha256": sha256(cache_dir / "cache.json"),
             "versiones": {"opencv": cv2.__version__, "numpy": np.__version__},
+            "modelo": getattr(modelo,"metadata",{}),
             "parametros": parametros, "configuracion_sha256": sha256(configuracion),
             "p50_detector_mas_identificacion_ms": float(np.percentile(total_ms, 50)),
             "p95_identificacion_ms": float(np.percentile([r["identificacion_ms"] for r in filas], 95)),
@@ -335,10 +428,21 @@ def main():
     preparar_cmd.add_argument("galeria", type=Path)
     preparar_cmd.add_argument("salida", type=Path)
     preparar_cmd.add_argument("videos", type=Path, nargs="+")
+    preparar_cmd.add_argument("--galeria-negativa",type=Path)
+    preparar_cmd.add_argument("--mejorar-pca",action="store_true")
+    mejorar_cmd=comandos.add_parser("con-mejoras-pca",help="Comparar originales y PCA ecualizados reutilizando cache")
+    mejorar_cmd.add_argument("cache",type=Path)
+    mejorar_cmd.add_argument("salida",type=Path)
+    clonar_cmd=comandos.add_parser("con-negativos",help="Reutilizar cache existente sin volver a abrir videos")
+    clonar_cmd.add_argument("cache",type=Path)
+    clonar_cmd.add_argument("galeria_negativa",type=Path)
+    clonar_cmd.add_argument("salida",type=Path)
     for nombre in ("calibrar", "evaluar"):
         comando = comandos.add_parser(nombre)
         comando.add_argument("cache", type=Path)
         comando.add_argument("configuracion", type=Path)
+        if nombre == "calibrar":
+            comando.add_argument("--permitir-sin-distractores",action="store_true",help="Piloto exploratorio sin ganador de identidad")
         if nombre == "evaluar":
             comando.add_argument("salida", type=Path)
     args = parser.parse_args()
@@ -347,9 +451,16 @@ def main():
     limites = threadpool_limits(limits=2)
     try:
         if args.accion == "preparar":
-            preparar(args.galeria.resolve(), args.salida.resolve(), [v.resolve() for v in args.videos])
+            preparar(args.galeria.resolve(), args.salida.resolve(), [v.resolve() for v in args.videos],
+                     galeria_negativa=args.galeria_negativa.resolve() if args.galeria_negativa else None,
+                     perfiles_pca=PERFILES_MEJORA_PCA if args.mejorar_pca else None)
+        elif args.accion == "con-mejoras-pca":
+            clonar_con_mejoras(args.cache.resolve(),args.salida.resolve())
+        elif args.accion == "con-negativos":
+            clonar_con_negativa(args.cache.resolve(),args.galeria_negativa.resolve(),args.salida.resolve())
         elif args.accion == "calibrar":
-            calibrar(args.cache.resolve(), args.configuracion.resolve())
+            calibrar(args.cache.resolve(), args.configuracion.resolve(),
+                     permitir_sin_distractores=args.permitir_sin_distractores)
         else:
             evaluar(args.cache.resolve(), args.configuracion.resolve(), args.salida.resolve())
     except (ValueError, OSError, KeyError, ImportError, cv2.error) as error:

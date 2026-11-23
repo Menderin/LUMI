@@ -93,3 +93,11 @@ Tras la carga manual observada por el usuario se elimina la excepcion que obliga
 El fallo estaba en pedir_revision: la tecla 0 se aceptaba dentro del selector de recuadros, pero se ignoraba en la pantalla inicial del fotograma. Se agrega 0 y el boton Vacia desde esa primera pantalla. Ambos guardan inmediatamente frames[indice]=[] y avanzan, sin dibujar. N conserva su significado de omitir. En la seleccion de identidad con otras personas, 0 sigue significando objetivo ausente y conserva los recuadros de los distractores.
 
 Pasaron las catorce pruebas locales de revision/selector, incluidas tres nuevas para 0 inicial, clic inicial y guardado persistente de [] por el flujo de anotacion. La interaccion nativa del NUC sigue pendiente. No se realizo commit.
+
+## Cuarto metodo probabilistico
+
+La bateria incluye CC-PPCA como cuarto experimento opcional. --galeria-negativa RUTA proporciona el enrolamiento aprobado de otra persona, independiente de los videos de prueba. Si falta, el cuarto renglon se muestra pendiente con su motivo y sin metricas. Ver [CC-PPCA](cc-ppca.md).
+
+## Variantes de preprocesamiento PCA
+
+Ver [comparacion controlada de PCA originales y ecualizados](mejoras-pca.md). Se activa con --mejorar-pca y conserva los resultados anteriores.

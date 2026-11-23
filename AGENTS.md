@@ -48,3 +48,5 @@ Antes de construir o modificar este flujo, leer [el protocolo de construcción](
 Antes de cambiar captura, identificacion o zonas, leer [enrolamiento comparable](docs/trabajo/enrolamiento-comparable.md). Usa OpenVINO CPU a 10 FPS, revision humana, acciones comunes de sesion y ordenes simuladas. La comparacion formal usa anotaciones humanas, detecciones compartidas, calibracion separada y evaluacion congelada.
 
 Para la bateria integrada de tres metodos leer [asistente guiado](docs/trabajo/bateria-guiada.md). Los informes sin distractores son exploratorios y no seleccionan ganador de identidad.
+
+Para el cuarto experimento probabilistico leer [CC-PPCA corporal](docs/trabajo/cc-ppca.md). La clase negativa procede de otra galeria aprobada e independiente de calibracion/evaluacion. No fabricar resultados cuando falten clases ni usar la evaluacion para ajustar el modelo.
