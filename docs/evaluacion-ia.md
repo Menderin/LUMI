@@ -114,3 +114,11 @@ Ver [comparacion controlada de PCA originales y ecualizados](trabajo/mejoras-pca
 ## CNN Re-ID opcional
 
 Ver [experimento CNN con la misma galeria de enrolamiento](trabajo/cnn-reid.md). Activar con --cnn o --descargar-cnn; conserva el histograma y PCA como referencias y genera otra corrida.
+
+## Revision de investigacion de seguimiento (2026-11-23)
+
+Ver [propuestas contrastadas con el codigo actual](trabajo/revision-investigacion-seguimiento.md). Prioriza diagnostico, agregacion de galeria, tracking con el mismo detector y fusion de apariencia. Son experimentos propuestos; no cambios activos ni resultados medidos.
+
+## Experimento E1: agregacion de galeria
+
+Ver [minimo frente a mediana de tres distancias](trabajo/experimento-agregacion-galeria.md). Se activa con --comparar-galeria; conserva datos y referencias. Histograma/CNN reciben umbrales separados y el movimiento permanece restringido.

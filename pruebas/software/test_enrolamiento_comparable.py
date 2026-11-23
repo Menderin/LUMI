@@ -283,6 +283,22 @@ class Comparacion(unittest.TestCase):
             informe(root/"informe6",[root/"resultado6"],solo=False)
             self.assertIn("## euclidea_eqhist",(root/"informe6"/"informe.md").read_text())
 
+            from software.percepcion.comparar_sesion import clonar_con_agregacion
+            cache_ag=root/"cache-agregacion"
+            clonar_con_agregacion(cache6,cache_ag)
+            with self.assertRaises(ValueError):
+                evaluar(cache_ag,cfg6,root/"umbrales-otra-regla")
+            cfg_ag=root/"calibracion-agregacion.json"
+            calibrar(cache_ag,cfg_ag)
+            evaluar(cache_ag,cfg_ag,root/"resultado-agregacion")
+            (root/"informe-agregacion").mkdir()
+            informe(root/"informe-agregacion",[root/"resultado-agregacion"],solo=False)
+            with (root/"resultado-agregacion"/"comparacion.csv").open() as f:
+                filas_ag=list(csv.DictReader(f))
+            self.assertEqual(len(filas_ag),7)
+            self.assertIn("histograma_mediana3",{f["metodo"] for f in filas_ag})
+            self.assertEqual(sha256(cache6/"galeria/00.png"),sha256(cache_ag/"galeria/00.png"))
+
             # Integracion opcional con pesos oficiales reales; nunca descarga en tests.
             import os
             ruta_cnn=os.environ.get("LUMI_REID_XML")
@@ -309,6 +325,26 @@ class Comparacion(unittest.TestCase):
                     self.assertEqual(embeddings["galeria"].shape,(8,256))
                 ficha=json.loads((root/"resultado7"/"cnn_reid.json").read_text())
                 self.assertEqual(ficha["modelo"]["dimension"],256)
+                cache9=root/"cache9"
+                clonar_con_agregacion(cache7,cache9)
+                cfg9=root/"congelada9.json"
+                calibrar(cache9,cfg9)
+                evaluar(cache9,cfg9,root/"resultado9")
+                evaluar(cache9,cfg9,root/"resultado9b")
+                (root/"informe9").mkdir()
+                informe(root/"informe9",[root/"resultado9",root/"resultado9b"],solo=False)
+                with (root/"informe9"/"comparacion.csv").open() as f:
+                    filas9=list(csv.DictReader(f))
+                self.assertEqual(len(filas9),9)
+                self.assertIn("cnn_reid_mediana3",{f["metodo"] for f in filas9})
+                self.assertTrue(json.loads((root/"informe9"/"recomendacion.json").read_text())["decisiones_equivalentes"])
+                for metodo in ("histograma","cnn_reid"):
+                    prev=(root/"resultado7"/f"{metodo}-frames.jsonl").read_text()
+                    nuevo=(root/"resultado9"/f"{metodo}-frames.jsonl").read_text()
+                    def decisiones(texto):
+                        return [(r["secuencia"],r["frame"],r["seleccion"]) for r in map(json.loads,texto.splitlines())]
+                    self.assertEqual(decisiones(prev),decisiones(nuevo))
+
 
             cv2.imwrite(str(cache4/"galeria-negativa"/"00.png"),np.zeros((128,64,3),np.uint8))
             with self.assertRaisesRegex(ValueError,"negativa cambio"):

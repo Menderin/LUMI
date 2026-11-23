@@ -52,3 +52,11 @@ Para la bateria integrada de tres metodos leer [asistente guiado](docs/trabajo/b
 Para el cuarto experimento probabilistico leer [CC-PPCA corporal](docs/trabajo/cc-ppca.md). La clase negativa procede de otra galeria aprobada e independiente de calibracion/evaluacion. No fabricar resultados cuando falten clases ni usar la evaluacion para ajustar el modelo.
 
 Para comparar CNN con los mismos recortes leer [CNN Re-ID](docs/trabajo/cnn-reid.md). Encoder preentrenado congelado, pesos oficiales verificados, galeria fija y calibracion separada. La comparacion offline y la opcion explicita --metodo cnn_reid en vivo no habilitan actuacion; histograma sigue siendo el predeterminado.
+
+## Banco de vision movil en NUC (2026-11-23)
+
+La app 0.8.0 selecciona una persona sobre video y controla enrolamiento en el NUC, que administra su Wi-Fi. Movimiento restringido tanto en app como en este servidor, sin conexion ESP/ROS de actuacion. Leer [contrato, arranque y verificacion](docs/trabajo/enrolamiento-movil-nuc.md). La nueva entrada es python -m software.percepcion.servidor_movil, distinta del servidor de simulacion anterior.
+
+## Experimento E1: agregacion de galeria
+
+Ver [minimo frente a mediana de tres distancias](docs/trabajo/experimento-agregacion-galeria.md). Se activa con --comparar-galeria; conserva datos y referencias. Histograma/CNN reciben umbrales separados y el movimiento permanece restringido.

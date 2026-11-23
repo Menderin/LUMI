@@ -101,7 +101,7 @@ class Identificador:
                 from sklearn.covariance import LedoitWolf
                 self.precision = LedoitWolf().fit(vectores).precision_
         self.galeria = vectores
-        self.metadata = {"metodo":self.metodo,"alto":self.alto,
+        self.metadata = {"metodo":self.metodo,"alto":self.alto,"agregacion":"minimo",
                          "preproceso":self.preproceso,"max_componentes":self.max_componentes,
                          "componentes_reales":int(self.componentes.shape[0]) if hasattr(self,"componentes") else None}
 
@@ -122,16 +122,19 @@ class Identificador:
             return valor / norma
         return gris(imagen, self.alto,self.preproceso)
 
-    def distancia(self, imagen):
+    def distancias_galeria(self, imagen):
         x = self.vector(imagen)
         if self.metodo == "histograma":
-            return min(cv2.compareHist(x, g, cv2.HISTCMP_BHATTACHARYYA) for g in self.galeria)
+            return np.asarray([cv2.compareHist(x,g,cv2.HISTCMP_BHATTACHARYYA) for g in self.galeria])
         if self.encoder:
-            return float(np.min(1 - self.galeria @ x))
+            return 1 - self.galeria @ x
         delta = (x - self.media) @ self.componentes.T - self.galeria
         if self.metodo == "mahalanobis":
-            return float(np.sqrt(np.maximum(0, ((delta @ self.precision)*delta).sum(axis=1))).min())
-        return float(np.linalg.norm(delta, axis=1).min())
+            return np.sqrt(np.maximum(0,((delta @ self.precision)*delta).sum(axis=1)))
+        return np.linalg.norm(delta,axis=1)
+
+    def distancia(self, imagen):
+        return float(np.min(self.distancias_galeria(imagen)))
 
 
 def crear_identificadores(muestras, base, alto=128, perfiles_pca=None):
@@ -153,7 +156,7 @@ def crear_identificadores(muestras, base, alto=128, perfiles_pca=None):
 
 
 def guardar_representacion(modelo, ruta):
-    if modelo.metodo in {"cc_ppca","cnn_reid"}:
+    if modelo.metodo in {"cc_ppca","cnn_reid","agregacion_galeria"}:
         modelo.guardar(ruta)
         return
     valores = {"metodo": np.array(modelo.metodo), "alto": np.array(modelo.alto),

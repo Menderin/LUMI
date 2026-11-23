@@ -135,6 +135,8 @@ def validar_anotaciones(ruta, split, escenario):
 
 
 VENTAJAS = {
+    "histograma_mediana3": ("Mismo HSV con respaldo de varias muestras, no solo la mas cercana.","Puede rechazar poses raras; requiere su propio umbral y no garantiza menos errores."),
+    "cnn_reid_mediana3": ("Mismo encoder y galeria; reduce dependencia de un solo embedding cercano.","Puede aumentar rechazos al cambiar de vista; no se reentrena ni garantiza mejora."),
     "cnn_reid": ("Encoder Re-ID preentrenado; galeria de hasta 24 recortes sin reentrenar.", "Aprendizaje externo previo; comprobar dominio de camara baja, distractores y coste real en el NUC."),
     "euclidea_eqhist": ("PCA Euclidea con contraste gris ecualizado antes del relleno.", "Puede amplificar ruido y no elimina cambios de pose, fondo o identidad."),
     "mahalanobis_eqhist": ("Misma proyeccion ecualizada que Euclidea, con covarianza regularizada.", "La ecualizacion y pocas muestras pueden alterar la covarianza; requiere calibracion propia."),
@@ -225,6 +227,33 @@ def informe(salida, corridas, solo):
             f"{r['sustituciones_frames']} | {float(r['peor_acierto_visible']):.1%} | "
             f"{float(r['p95_ms']):.1f} | {float(r['cpu_proceso_pct_total']):.1f} | {int(r['rss_max_bytes'])/2**20:.1f} |"
         )
+    pares=[]
+    for metodo in ("histograma","cnn_reid"):
+        original=next((r for r in agregados if r["metodo"]==metodo),None)
+        variante=next((r for r in agregados if r["metodo"]==metodo+"_mediana3"),None)
+        if original is not None and variante is not None:
+            if any(original[k]!=variante[k] for k in ("visibles","ausentes","revisados")):
+                raise ValueError("Comparacion de galeria con denominadores diferentes")
+            pares.append({"metodo_base":metodo,"regla_base":"minimo","regla_variante":"mediana3",
+                          "visibles":original["visibles"],"ausentes":original["ausentes"],
+                          "aciertos_minimo":int(original["correctos"]),"aciertos_mediana3":int(variante["correctos"]),
+                          "delta_aciertos":int(variante["correctos"])-int(original["correctos"]),
+                          "falsas_aceptaciones_minimo":int(original["falsas_aceptaciones"]),
+                          "falsas_aceptaciones_mediana3":int(variante["falsas_aceptaciones"]),
+                          "delta_falsas_aceptaciones":int(variante["falsas_aceptaciones"])-int(original["falsas_aceptaciones"]),
+                          "sustituciones_minimo":int(original["sustituciones_frames"]),
+                          "sustituciones_mediana3":int(variante["sustituciones_frames"])})
+    if pares:
+        with (salida/"comparacion-galeria.csv").open("w",encoding="utf-8",newline="") as archivo:
+            writer=csv.DictWriter(archivo,fieldnames=list(pares[0]))
+            writer.writeheader();writer.writerows(pares)
+        lineas += ["","## E1: minimo frente a mediana3","",
+                   "Misma galeria y consultas; umbrales propios. Delta = mediana3 menos minimo.","",
+                   "| Metodo | Delta aciertos | Delta falsas aceptaciones |",
+                   "| --- | --- | --- |"]
+        for par in pares:
+            lineas.append(f"| {par['metodo_base']} | {par['delta_aciertos']:+d} | {par['delta_falsas_aceptaciones']:+d} |")
+        lineas += ["","Mas aciertos favorece la variante; mas falsas aceptaciones la perjudica. Revisar tambien sustituciones y peor escenario."]
     lineas += ["", "*p95 suma el tiempo de deteccion guardado y la identificacion offline. No mide camara-pantalla.",
                "CPU/RSS corresponden al proceso offline. El consumo completo de captura esta en recursos.csv.",
                "Los fotogramas omitidos no entran en los denominadores. Revisar cada JSON por escenario.",
@@ -245,7 +274,7 @@ def informe(salida, corridas, solo):
     (salida/"informe.md").write_text("\n".join(lineas)+"\n",encoding="utf-8")
 
 
-def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar, galeria_negativa=None, mejorar_pca=False, cnn=None):
+def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar, galeria_negativa=None, mejorar_pca=False, cnn=None, comparar_galeria=False):
     guia = leer(carpeta/"guia.json")
     if not guia["terminada"] or guia["cancelada"]:
         raise ValueError("Captura incompleta. Los archivos se conservaron; falta completar la bateria")
@@ -254,7 +283,7 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar, galeria_negativa=
     marca = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     salida = REPO/"datos/procesados"/f"bateria-guiada-{marca}"
     salida.mkdir(parents=True)
-    guardar_json(salida/"sesion.json", {"origen":str(carpeta),"guia":guia,"repeticiones":repeticiones,"paso_revision":paso,"mejorar_pca":mejorar_pca,"cnn":cnn,
+    guardar_json(salida/"sesion.json", {"origen":str(carpeta),"guia":guia,"repeticiones":repeticiones,"paso_revision":paso,"mejorar_pca":mejorar_pca,"cnn":cnn,"comparar_galeria":comparar_galeria,
                                                  "galeria_negativa":str(galeria_negativa) if galeria_negativa else None})
     perfiles = PERFILES_MEJORA_PCA if mejorar_pca else None
     videos = {}
@@ -276,12 +305,12 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar, galeria_negativa=
             if not videos[split]:
                 raise ValueError(f"Faltan clips de {split}")
             if split == "calibracion":
-                preparar(galeria,salida/"cache-calibracion",videos[split],galeria_negativa=galeria_negativa,perfiles_pca=perfiles,cnn=cnn)
+                preparar(galeria,salida/"cache-calibracion",videos[split],galeria_negativa=galeria_negativa,perfiles_pca=perfiles,cnn=cnn,comparar_galeria=comparar_galeria)
                 calibrar(salida/"cache-calibracion",salida/"umbrales.json",
                          permitir_sin_distractores=solo)
                 print("Parametros congelados. Ahora revisaremos la evaluacion.",flush=True)
         preparar(galeria,salida/"cache-completa",videos["calibracion"]+videos["evaluacion"],
-                 galeria_negativa=galeria_negativa,perfiles_pca=perfiles,cnn=cnn)
+                 galeria_negativa=galeria_negativa,perfiles_pca=perfiles,cnn=cnn,comparar_galeria=comparar_galeria)
         corridas = []
         for i in range(repeticiones):
             corrida = salida/f"repeticion-{i+1:02}"
@@ -301,6 +330,7 @@ def main():
     parser.add_argument("--cnn",action="store_true",help="Incluir encoder CNN OpenVINO congelado")
     parser.add_argument("--descargar-cnn",action="store_true",help="Descargar pesos CNN oficiales e incluir experimento")
     parser.add_argument("--modelo-cnn",type=Path,help="XML oficial 0288 FP16 ya descargado")
+    parser.add_argument("--comparar-galeria",action="store_true",help="Agregar variantes histograma/CNN con mediana de tres distancias")
     parser.add_argument("--mejorar-pca",action="store_true",help="Comparar PCA originales y ecualizados con los mismos datos")
     parser.add_argument("--solo",action="store_true",help="Piloto sin distractor; informe sin ganador de identidad")
     parser.add_argument("--continuar",type=Path,help="Reanudar anotacion/analisis de una captura guiada completa")
@@ -339,7 +369,7 @@ def main():
                 return
         analizar(carpeta,repeticiones=args.repeticiones,paso=args.paso_revision,
                  galeria_negativa=args.galeria_negativa.resolve() if args.galeria_negativa else None,
-                 mejorar_pca=args.mejorar_pca,cnn=cnn)
+                 mejorar_pca=args.mejorar_pca,cnn=cnn,comparar_galeria=args.comparar_galeria)
     except (ValueError,OSError,KeyError,RuntimeError,cv2.error) as error:
         parser.exit(1,f"Error: {error}\nDatos: {carpeta}\nPara reanudar revision: --continuar {carpeta}\n")
 

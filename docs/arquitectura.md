@@ -104,3 +104,7 @@ Solo para ensayo Android→ESP: app 0.5.0 usa UDP 8082 con ACK/tickets ESP para 
 El NUC mantiene la sesion de enrolamiento. La ventana usa acciones iniciar, confirmar, cancelar, repetir, iniciar_seguimiento y reanudar. Confirmar deja Listo y no inicia seguimiento. La futura app invocara esas acciones sobre el mismo propietario. Las zonas 40-60 % con histeresis producen intenciones visuales; Alineado no autoriza avance ni mide distancia. Ver [flujo y contratos](trabajo/enrolamiento-comparable.md).
 
 En el piloto visual, la recuperacion simulada continua tras perdida y reanuda con tres coincidencias consecutivas. Es un modo explicito de la practica, con busqueda visual y registro. El contrato de actuacion fisica requiere su validacion independiente. Ver el registro de enrolamiento comparable.
+
+## Banco de vision movil en NUC (2026-11-23)
+
+La app 0.8.0 selecciona una persona sobre video y controla enrolamiento en el NUC, que administra su Wi-Fi. Movimiento restringido tanto en app como en este servidor, sin conexion ESP/ROS de actuacion. Leer [contrato, arranque y verificacion](trabajo/enrolamiento-movil-nuc.md). La nueva entrada es python -m software.percepcion.servidor_movil, distinta del servidor de simulacion anterior.

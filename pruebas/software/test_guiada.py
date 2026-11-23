@@ -167,6 +167,14 @@ class BateriaGuiada(unittest.TestCase):
             self.assertEqual(pendiente["estado"],"pendiente")
             self.assertEqual(pendiente["correctos"],"")
             self.assertTrue(json.loads((salida/"recomendacion.json").read_text())["decisiones_equivalentes"])
+            with patch("software.percepcion.guiada.REPO",root):
+                salida_ag=analizar(sesion,repeticiones=1,anotador=anotador,comparar_galeria=True)
+            with (salida_ag/"comparacion.csv").open() as f:
+                variantes=list(csv.DictReader(f))
+            self.assertEqual(len(variantes),5)
+            self.assertIn("histograma_mediana3",{r["metodo"] for r in variantes})
+            self.assertTrue((salida_ag/"comparacion-galeria.csv").is_file())
+
 
     @staticmethod
     def video(ruta,frames):

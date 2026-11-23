@@ -109,7 +109,7 @@ class ReIDOpenVINO:
         calentamiento=(time.perf_counter()-inicio)*1000
         inicio=time.perf_counter()
         self.galeria=np.stack([self.vector(x) for x in muestras])
-        self.metadata={**cfg,"openvino":ov.__version__,"dimension":256,
+        self.metadata={**cfg,"openvino":ov.__version__,"dimension":256,"agregacion":"minimo",
                        "galeria_recortes":len(muestras),"entrenamiento":"externo preentrenado; encoder congelado",
                        "calentamiento_iteraciones":3,"calentamiento_ms":calentamiento,
                        "codificacion_galeria_ms":(time.perf_counter()-inicio)*1000}
@@ -118,9 +118,12 @@ class ReIDOpenVINO:
         self.peticion.infer({self.modelo.input():entrada(imagen)})
         return normalizar(self.peticion.get_output_tensor().data)
 
-    def distancia(self,imagen):
+    def distancias_galeria(self,imagen):
         vector=self.vector(imagen)
-        return float(np.min(1-np.clip(self.galeria@vector,-1,1)))
+        return 1-np.clip(self.galeria@vector,-1,1)
+
+    def distancia(self,imagen):
+        return float(np.min(self.distancias_galeria(imagen)))
 
     def guardar(self,ruta):
         np.savez_compressed(ruta,metodo=np.array(self.metodo),galeria=self.galeria,

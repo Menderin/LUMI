@@ -14,6 +14,7 @@ import psutil
 
 from .experimentos import crear_identificadores, guardar_representacion, iou, recortar
 from .practica import guardar_json, resolver
+from .agregacion_galeria import MedianaGaleria, PERFIL_AGREGACION
 
 PERFILES_MEJORA_PCA = {"eqhist":{"alto":128,"preproceso":"eqhist","componentes":8}}
 
@@ -33,6 +34,8 @@ def leer(ruta):
 def firma_calibracion(cache):
     contenido = {"galeria_sha256": cache["galeria_sha256"],
                  "frames": [r for r in cache["frames"] if r["split"] == "calibracion"]}
+    if cache.get("agregacion_galeria"):
+        contenido["agregacion_galeria"]=cache["agregacion_galeria"]
     if cache.get("cnn"):
         contenido["cnn"] = cache["cnn"]
     if cache.get("perfiles_pca"):
@@ -102,7 +105,17 @@ def clonar_con_cnn(cache_dir,salida,cnn):
     guardar_json(salida/"cache.json",cache)
 
 
-def preparar(galeria, salida, videos, *, galeria_negativa=None, perfiles_pca=None, cnn=None):
+def clonar_con_agregacion(cache_dir,salida):
+    if salida.exists():
+        raise ValueError("Usa una cache nueva para comparar galeria")
+    cache=leer(cache_dir/"cache.json")
+    comprobar_cache(cache_dir,cache)
+    shutil.copytree(cache_dir,salida)
+    cache["agregacion_galeria"]=PERFIL_AGREGACION
+    guardar_json(salida/"cache.json",cache)
+
+
+def preparar(galeria, salida, videos, *, galeria_negativa=None, perfiles_pca=None, cnn=None, comparar_galeria=False):
     if salida.exists():
         raise ValueError("La salida debe ser nueva para conservar corridas anteriores")
     ficha = leer(galeria / "galeria.json")
@@ -192,6 +205,8 @@ def preparar(galeria, salida, videos, *, galeria_negativa=None, perfiles_pca=Non
             "sha256": marca, "origen": str(video), "split": anotaciones["split"],
             "configuracion_captura": leer(config_origen) if config_origen.exists() else None,
         })
+    if comparar_galeria:
+        cache["agregacion_galeria"]=PERFIL_AGREGACION
     if cnn:
         cache["cnn"]=cnn
     if perfiles_pca:
@@ -203,6 +218,8 @@ def preparar(galeria, salida, videos, *, galeria_negativa=None, perfiles_pca=Non
 
 
 def comprobar_cache(cache_dir, cache):
+    if cache.get("agregacion_galeria") and cache["agregacion_galeria"]!=PERFIL_AGREGACION:
+        raise ValueError("Perfil de agregacion de galeria incompatible")
     if cache.get("cnn"):
         from .reid_openvino import configuracion
         if configuracion(cache["cnn"]["ruta"],cache["cnn"]["hilos"]) != cache["cnn"]:
@@ -241,6 +258,10 @@ def modelos(cache_dir, *, incidencias=None):
             motivo=None
         except ValueError as error:
             motivo=str(error)
+    if cache.get("agregacion_galeria"):
+        for nombre in PERFIL_AGREGACION["metodos"]:
+            if nombre in resultado:
+                resultado[nombre+"_mediana3"]=MedianaGaleria(resultado[nombre])
     if incidencias is not None and motivo:
         incidencias["cc_ppca"]=motivo
     return resultado
@@ -451,6 +472,10 @@ def main():
     preparar_cmd.add_argument("videos", type=Path, nargs="+")
     preparar_cmd.add_argument("--galeria-negativa",type=Path)
     preparar_cmd.add_argument("--mejorar-pca",action="store_true")
+    preparar_cmd.add_argument("--comparar-galeria",action="store_true")
+    ag_cmd=comandos.add_parser("con-agregacion",help="Reutilizar cache y comparar minimo/mediana3")
+    ag_cmd.add_argument("cache",type=Path)
+    ag_cmd.add_argument("salida",type=Path)
     mejorar_cmd=comandos.add_parser("con-mejoras-pca",help="Comparar originales y PCA ecualizados reutilizando cache")
     mejorar_cmd.add_argument("cache",type=Path)
     mejorar_cmd.add_argument("salida",type=Path)
@@ -478,7 +503,10 @@ def main():
         if args.accion == "preparar":
             preparar(args.galeria.resolve(), args.salida.resolve(), [v.resolve() for v in args.videos],
                      galeria_negativa=args.galeria_negativa.resolve() if args.galeria_negativa else None,
-                     perfiles_pca=PERFILES_MEJORA_PCA if args.mejorar_pca else None)
+                     perfiles_pca=PERFILES_MEJORA_PCA if args.mejorar_pca else None,
+                     comparar_galeria=args.comparar_galeria)
+        elif args.accion == "con-agregacion":
+            clonar_con_agregacion(args.cache.resolve(),args.salida.resolve())
         elif args.accion == "con-mejoras-pca":
             clonar_con_mejoras(args.cache.resolve(),args.salida.resolve())
         elif args.accion == "con-cnn":

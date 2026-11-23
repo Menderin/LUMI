@@ -51,3 +51,7 @@ Historial **0.6.1**: [recuperación del canal y tokens retrasados](../../docs/tr
 
 
 La app de banco vigente es **0.7.0**. Usa [firmware protocolo 3](../../docs/trabajo/banco-protocolo-v3.md).
+
+## Banco de vision movil en NUC (2026-11-23)
+
+La app 0.8.0 selecciona una persona sobre video y controla enrolamiento en el NUC, que administra su Wi-Fi. Movimiento restringido tanto en app como en este servidor, sin conexion ESP/ROS de actuacion. Leer [contrato, arranque y verificacion](../../docs/trabajo/enrolamiento-movil-nuc.md). La nueva entrada es python -m software.percepcion.servidor_movil, distinta del servidor de simulacion anterior.
