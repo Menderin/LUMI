@@ -224,7 +224,7 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar):
     marca = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     salida = REPO/"datos/procesados"/f"bateria-guiada-{marca}"
     salida.mkdir(parents=True)
-    guardar_json(salida/"sesion.json", {"origen":str(carpeta),"guia":guia,"repeticiones":repeticiones})
+    guardar_json(salida/"sesion.json", {"origen":str(carpeta),"guia":guia,"repeticiones":repeticiones,"paso_revision":paso})
     videos = {}
     with threadpool_limits(limits=2):
         # No se usa la evaluacion para elegir umbrales.
@@ -235,7 +235,7 @@ def analizar(carpeta, repeticiones=3, paso=5, anotador=anotar):
                     continue
                 video = carpeta/clip["video"]
                 print(f"REVISAR {split}: {clip['instruccion']}",flush=True)
-                paso_clip = 1 if clip["escenario"] in ("oclusion","cruce") else paso
+                paso_clip = paso
                 completa = anotador(video,split,clip["escenario"],paso_clip)
                 if completa is False:
                     raise ValueError("Revision incompleta o sin etiquetas. Usa S / Enter / Revisar para etiquetar; N omite. Retoma con --continuar")
@@ -267,9 +267,11 @@ def main():
     parser.add_argument("--continuar",type=Path,help="Reanudar anotacion/analisis de una captura guiada completa")
     parser.add_argument("--descargar-modelo",action="store_true")
     parser.add_argument("--repeticiones",type=int,default=3)
+    parser.add_argument("--paso-revision",type=int,default=5,
+                        help="Revisar uno de cada N frames; 5 para piloto, 1 para exhaustiva")
     args=parser.parse_args()
-    if args.camara < 0 or args.repeticiones < 1:
-        parser.error("Camara y repeticiones fuera de rango")
+    if args.camara < 0 or args.repeticiones < 1 or args.paso_revision < 1:
+        parser.error("Camara, repeticiones o paso de revision fuera de rango")
     cv2.setNumThreads(1)
     carpeta = args.continuar.resolve() if args.continuar else REPO/"datos/enrolamientos"/datetime.now().strftime("guiada-%Y%m%d-%H%M%S-%f")
     try:
@@ -289,7 +291,7 @@ def main():
             if not guia.terminada or guia.cancelada:
                 print(f"Captura interrumpida. Datos conservados en {carpeta}",flush=True)
                 return
-        analizar(carpeta,repeticiones=args.repeticiones)
+        analizar(carpeta,repeticiones=args.repeticiones,paso=args.paso_revision)
     except (ValueError,OSError,KeyError,RuntimeError,cv2.error) as error:
         parser.exit(1,f"Error: {error}\nDatos: {carpeta}\nPara reanudar revision: --continuar {carpeta}\n")
 

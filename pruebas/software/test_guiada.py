@@ -149,8 +149,14 @@ class BateriaGuiada(unittest.TestCase):
                 w.writerows(decisiones)
             guardar_json(sesion/"guia.json",{"terminada":True,"cancelada":False,"solo":False,
                                           "galeria":"galeria-1","clips":clips})
+            pasos=[]
+            def anotador(video,split,escenario,paso):
+                pasos.append((escenario,paso))
+                return True
             with patch("software.percepcion.guiada.REPO",root):
-                salida=analizar(sesion,repeticiones=2,anotador=lambda *args:True)
+                salida=analizar(sesion,repeticiones=2,anotador=anotador)
+            self.assertEqual(len(pasos),10)
+            self.assertEqual({p for escenario,p in pasos},{5})
             self.assertTrue((salida/"informe.md").is_file())
             self.assertIn("Limitacion:",(salida/"informe.md").read_text())
             with (salida/"comparacion.csv").open() as f:

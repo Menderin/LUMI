@@ -30,7 +30,7 @@ El modo completo requiere un acompanante para distractor y cruces. El modo solo 
 5. Se congelan los parametros de los tres metodos. Luego se revisan las tomas de evaluacion con el mismo procedimiento. No se usan sus etiquetas para ajustar umbrales.
 6. El asistente prepara una cache comun, ejecuta los tres identificadores y repite cada comparacion tres veces. Genera informe.md, comparacion.csv, recomendacion.json y las corridas detalladas. No hace falta lanzar los tres experimentos manualmente.
 
-Los cruces y oclusiones se revisan frame a frame. En las otras escenas se ofrece uno de cada cinco frames. Los omitidos quedan fuera de los denominadores. La revision humana es necesaria para distinguir realmente al objetivo de un distractor; el guion de acciones no se convierte en verdad de terreno automaticamente.
+Por defecto todas las escenas, incluidas oclusiones y cruces, ofrecen uno de cada cinco frames. Para revision exhaustiva usar --paso-revision 1. Los omitidos quedan fuera de los denominadores. La revision humana es necesaria para distinguir realmente al objetivo de un distractor; el guion de acciones no se convierte en verdad de terreno automaticamente.
 
 La identificacion por numero se hace sobre la ventana, sin volver a la terminal. Para mas de nueve personas se usa clic. En este piloto se esperan una o dos.
 
@@ -83,3 +83,13 @@ El anotador detecta automaticamente solo=true desde guia.json de la captura, inc
 Para varias personas se mantiene la seleccion explicita de identidad, con los bordes y numeros visibles. Se corrigio la desaparicion visual de los bordes en esa pantalla y se coloco el boton Ausente debajo de la imagen para no interceptar clics sobre el cuerpo. El guardado se realiza despues de la identidad y se muestra el numero acumulado de etiquetas en la siguiente pantalla, ademas de registrarse por terminal.
 
 Las etiquetas previamente revisadas se conservan al continuar. Las nuevas pruebas comprueban deteccion automatica de --solo, guardado persistente del objetivo sin segundo clic, reemplazo al redibujar y bordes/clic en el modo multiple. La verificacion del raton nativo del NUC sigue pendiente.
+
+## Muestreo practico de revision, 2026-11-23
+
+Tras la carga manual observada por el usuario se elimina la excepcion que obligaba a revisar todos los frames de oclusion/cruce. La bateria usa paso 5 en todas las escenas, aproximadamente veinte imagenes por clip de diez segundos a 10 FPS nominales. --paso-revision 1 permite la revision exhaustiva. Se registra el paso en sesion.json. Al continuar se conservan todas las etiquetas existentes, incluso si son mas densas que el muestreo nuevo. La recuperacion temporal medida con etiquetas dispersas tiene menor precision; revisar ventanas concretas despues si hace falta.
+
+## Escena vacia desde la pantalla inicial, 2026-11-23
+
+El fallo estaba en pedir_revision: la tecla 0 se aceptaba dentro del selector de recuadros, pero se ignoraba en la pantalla inicial del fotograma. Se agrega 0 y el boton Vacia desde esa primera pantalla. Ambos guardan inmediatamente frames[indice]=[] y avanzan, sin dibujar. N conserva su significado de omitir. En la seleccion de identidad con otras personas, 0 sigue significando objetivo ausente y conserva los recuadros de los distractores.
+
+Pasaron las catorce pruebas locales de revision/selector, incluidas tres nuevas para 0 inicial, clic inicial y guardado persistente de [] por el flujo de anotacion. La interaccion nativa del NUC sigue pendiente. No se realizo commit.

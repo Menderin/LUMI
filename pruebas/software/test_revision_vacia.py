@@ -43,5 +43,33 @@ class RevisionVacia(unittest.TestCase):
                 validar_anotaciones(Path(carpeta)/"no-existe.json","calibracion","frente-perfiles")
 
 
+    def test_cero_desde_pantalla_inicial(self):
+        imagen=np.zeros((240,320,3),np.uint8)
+        with patch("cv2.setMouseCallback"),patch("cv2.imshow"),patch("cv2.waitKey",return_value=ord("0")):
+            self.assertEqual(pedir_revision("revision",imagen,0),ord("0"))
+
+    def test_boton_vacia_desde_pantalla_inicial(self):
+        imagen=np.zeros((240,320,3),np.uint8)
+        def registrar(ventana,callback):
+            callback(cv2.EVENT_LBUTTONDOWN,100,210,0,None)
+        with patch("cv2.setMouseCallback",side_effect=registrar),patch("cv2.imshow"),patch("cv2.waitKey",return_value=-1):
+            self.assertEqual(pedir_revision("revision",imagen,0),ord("0"))
+
+    def test_cero_guarda_ausencia_sin_dibujar(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            video=Path(carpeta)/"vacio.avi"
+            imagen=np.zeros((240,320,3),np.uint8)
+            writer=Video(video,10,imagen)
+            writer.escribir(imagen)
+            writer.cerrar()
+            with patch("cv2.namedWindow"),patch("cv2.setMouseCallback"),patch("cv2.imshow"),patch("cv2.destroyAllWindows"),patch("cv2.getWindowProperty",return_value=1),patch("cv2.waitKey",return_value=ord("0")),patch("software.percepcion.anotar_practica.seleccionar_recuadros") as selector,patch("software.percepcion.anotar_practica.elegir_objetivo") as elegir:
+                self.assertTrue(anotar(video,"calibracion","ausente",1))
+                selector.assert_not_called()
+                elegir.assert_not_called()
+            ficha=json.loads(video.with_suffix(".anotaciones.json").read_text())
+            self.assertEqual(ficha["frames"],{"0":[]})
+            validar_anotaciones(video.with_suffix(".anotaciones.json"),"calibracion","ausente")
+
+
 if __name__=="__main__":
     unittest.main()

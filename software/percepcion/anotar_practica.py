@@ -55,9 +55,10 @@ def pedir_revision(ventana, frame, indice, *, guardados=0):
     cv2.rectangle(vista,(0,0),(vista.shape[1]-1,50),(20,20,20),-1)
     cv2.putText(vista,f"Frame {indice} | Guardados: {guardados} | S / Revisar",(8,20),
                 cv2.FONT_HERSHEY_SIMPLEX,.5,(255,255,255),1)
-    cv2.putText(vista,"N omite el frame; no confirma identidad",(8,42),
+    cv2.putText(vista,"0 guarda escena vacia | N omite el frame",(8,42),
                 cv2.FONT_HERSHEY_SIMPLEX,.48,(255,255,255),1)
-    zonas=botones(vista,[("Revisar [S]",ord("s")),("Omitir [N]",ord("n")),("Salir [Esc]",27)],
+    zonas=botones(vista,[("Revisar [S]",ord("s")),("Vacia [0]",ord("0")),
+                         ("Omitir [N]",ord("n")),("Salir [Esc]",27)],
                   max(55,vista.shape[0]-44))
     cv2.setMouseCallback(ventana,callback_botones(zonas,cola))
     cv2.imshow(ventana,vista)
@@ -67,7 +68,7 @@ def pedir_revision(ventana, frame, indice, *, guardados=0):
             tecla=cola.pop(0)
         if tecla in (10,13):
             tecla=ord("s")
-        if tecla in (ord("s"),ord("n"),27):
+        if tecla in (ord("s"),ord("0"),ord("n"),27):
             return tecla
         if not ventana_visible(ventana):
             return 27
@@ -154,7 +155,7 @@ def anotar(video, split, escenario, paso, *, solo=None):
     captura = cv2.VideoCapture(str(video))
     if not captura.isOpened():
         raise ValueError("No se pudo abrir el video")
-    ventana = "Anotar personas (S revisar frame, N omitir, Esc salir)"
+    ventana = "Anotar personas (S revisar, 0 vacia, N omitir, Esc salir)"
     guardar_json(ruta,datos)
     try:
         cv2.namedWindow(ventana, cv2.WINDOW_NORMAL)
@@ -169,9 +170,12 @@ def anotar(video, split, escenario, paso, *, solo=None):
                 if tecla == 27 or not ventana_visible(ventana):
                     interrumpida = True
                     break
-                if tecla == ord("s"):
-                    print("Arrastra y suelta para cada persona. Confirmar o Espacio termina; 0 confirma escena vacia.")
-                    cajas = seleccionar_recuadros(ventana,frame,solo=solo)
+                if tecla in (ord("s"),ord("0")):
+                    if tecla == ord("0"):
+                        cajas = []
+                    else:
+                        print("Arrastra y suelta para cada persona. Confirmar o Espacio termina; 0 confirma escena vacia.")
+                        cajas = seleccionar_recuadros(ventana,frame,solo=solo)
                     if cajas is None:
                         interrumpida = True
                         break
