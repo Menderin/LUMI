@@ -59,3 +59,8 @@ Incluir objetivo solo, distractor solo, escena vacia, oclusion/salida/reaparicio
 ## Evidencia y pendientes
 
 61 pruebas Python pasaron con pesos oficiales CNN disponibles, incluyendo galeria24 intacta, variantes con referencia identica, calibracion incompatible rechazada, informes con todas las variantes y decisiones repetibles. No hay resultados nuevos del laboratorio. La app0.8.0 conserva su APK, contrato y movimiento restringido; este cambio solo amplia la comparacion offline. ByteTrack/fusion y filtros no estan implementados por este experimento.
+
+
+## Ejecucion conjunta D0/E1
+
+El [ejecutor reutilizable](experimentos-reutilizables.md) agrega diagnostico por escenario y permite correr desde sesion etiquetada o cache sinGUI/camara. No requiere nuevoAPK ni repetir enrolamiento. Los resultados reales del NUC siguen pendientes; la validacion local usa datos sinteticos identificados.

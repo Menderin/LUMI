@@ -69,3 +69,8 @@ Ver [minimo frente a mediana de tres distancias](docs/trabajo/experimento-agrega
 ## Video WebRTC nativo0.9.0
 
 [Transporte, arranque y prueba A/B](docs/trabajo/webrtc-movil-nuc.md): servidor de vision con --webrtc, app nativa VP8 y HTTP para estado/enrolamiento; UDP50000-50009 del hotspot. Comparacion explicita conJPEG. Camara unica y movimiento restringido. Validacion fisica NUC/telefono pendiente.
+
+
+## D0 y E1 sin nueva captura
+
+[Ejecutor reutilizable y diagnostico](docs/trabajo/experimentos-reutilizables.md): python -m software.percepcion.bateria_reutilizable RUTA acepta sesion guiada etiquetada o cache anterior. Sin camara/GUI, calibra variantes por separado, conserva originales y genera informes en datos/procesados. Para el piloto sin distractores usar --permitir-sin-distractores; no declara ganador.
