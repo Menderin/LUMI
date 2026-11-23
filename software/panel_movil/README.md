@@ -59,3 +59,7 @@ La app 0.8.0 selecciona una persona sobre video y controla enrolamiento en el NU
 ## Video movil 0.8.1
 
 [Mejora de fluidez y mediciones](../../docs/trabajo/fluidez-video-movil.md): un GET por imagen, periodo100ms, HTTP persistente, entrega de ultimo cuadro y FPS reales dibujados. Actualizar app y reiniciar servidor actualizado para obtener mejora completa. Movimiento sigue restringido.
+
+## Video movil 0.8.2
+
+[Modo Wi-Fi de baja latencia y JPEG binario](../../docs/trabajo/fluidez-video-movil.md): actualizar APK y servidor para reducir envoltorio de imagen, conservando la API anterior como fallback. Movimiento sigue restringido. Ver los indicadores JPEG binario/JPEG-JSON y Baja latencia solicitada.

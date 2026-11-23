@@ -287,10 +287,14 @@ def manejador(banco):
         def log_message(self, formato, *args):
             pass
 
-        def responder(self, codigo, datos):
-            contenido = json.dumps(datos).encode()
+        def responder(self,codigo,datos):
+            self.enviar(codigo,json.dumps(datos).encode(),"application/json; charset=utf-8")
+
+        def enviar(self,codigo,contenido,tipo,metadata=None):
             self.send_response(codigo)
-            self.send_header("Content-Type","application/json; charset=utf-8")
+            self.send_header("Content-Type",tipo)
+            if metadata is not None:
+                self.send_header("X-Lumi-Metadata",json.dumps(metadata,ensure_ascii=True,separators=(",",":")))
             self.send_header("Content-Length",str(len(contenido)))
             self.send_header("Cache-Control","no-store")
             self.end_headers()
@@ -303,7 +307,7 @@ def manejador(banco):
             with banco.lock:
                 if self.path == "/api/estado":
                     datos = banco.estado()
-                elif self.path == "/api/vision/frame":
+                elif self.path in ("/api/vision/frame","/api/vision/frame.jpg"):
                     datos = banco.snapshot if banco.estado()["camara_activa"] else None
                     if datos:
                         datos = {**datos,"estado":banco.estado()}
@@ -311,7 +315,11 @@ def manejador(banco):
                     datos = banco.revision
                 else:
                     return self.responder(404,{"error":"Ruta no disponible"})
-            self.responder(200 if datos else 503,datos or {"error":banco.error or "Preparando camara o revision"})
+            if self.path == "/api/vision/frame.jpg" and datos:
+                metadata={k:v for k,v in datos.items() if k!="jpeg"}
+                self.enviar(200,base64.b64decode(datos["jpeg"]),"image/jpeg",metadata)
+            else:
+                self.responder(200 if datos else 503,datos or {"error":banco.error or "Preparando camara o revision"})
 
         def do_POST(self):
             if self.path not in ("/api/enrolamiento","/api/vision/seleccionar"):

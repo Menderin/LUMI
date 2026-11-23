@@ -100,6 +100,16 @@ class SeleccionMovil(unittest.TestCase):
                 decoded=cv2.imdecode(np.frombuffer(base64.b64decode(body["jpeg"]),np.uint8),cv2.IMREAD_COLOR)
                 self.assertEqual(decoded.shape[:2],(body["alto"],body["ancho"]))
                 self.assertEqual(body["cajas"],[list(x) for x in CAJAS])
+                with urlopen(base+"/api/vision/frame.jpg") as response:
+                    self.assertEqual(response.headers["Content-Type"],"image/jpeg")
+                    metadata=json.loads(response.headers["X-Lumi-Metadata"])
+                    binario=response.read()
+                self.assertEqual(metadata["frame_id"],body["frame_id"])
+                self.assertEqual(metadata["cajas"],body["cajas"])
+                self.assertNotIn("jpeg",metadata)
+                self.assertEqual(binario,base64.b64decode(body["jpeg"]))
+                self.assertLess(len(binario),len(body["jpeg"]))
+
                 import http.client
                 conexion=http.client.HTTPConnection("127.0.0.1",server.server_port,timeout=2)
                 try:

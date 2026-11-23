@@ -36,3 +36,51 @@ python -m software.percepcion.servidor_movil --camara 0
 5. Probar tocar recuadro, ver recortes y confirmar; movimiento sigue deshabilitado. Si Carga se aproxima o supera100ms, registrar sus valores para localizar el limite restante.
 
 La app optimizada conserva compatibilidad de API con servidor anterior, pero sin actualizarlo se siguen cerrando conexiones por cuadro y la mejora puede ser insuficiente. Primera conexion/reconexion puede ser mas lenta que las siguientes; el ajuste reduce coste repetido, no promete eliminar el de arranque.
+
+## Revision de picos y banda Wi-Fi, 2026-11-23
+
+Usuario observa retrasos esporadicos, luego estabilizacion. La banda fisica del hotspot no se ha medido desde este chat. Ejecutar en NUC `iw dev wlo1 info` para canal/frecuencia y `sudo iw dev wlo1 station dump` para clientes, senal, tasas y retransmisiones. Estas consultas no cambian la conexion. Anotar App FPS/Carga y NUC FPS/ms en estable y durante pico, y si ocurre al capturar/confirmar o durante seguimiento normal.
+
+Hardware AX201 soporta2.4/5GHz como radio segun Intel, pero iwlwifi documenta AP2.4 sin soporte AP5GHz en iwlmvm por LAR. No asumir que `nmcli ... band a` habilita un hotspot5GHz; puede fallar. Primero comprobar capacidades/regulacion reales; no cambiar region ni forzar canales prohibidos. Un router/AP5GHz existente con ambos equipos como clientes permitiria comparar radio sin exigir al Intel actuar como AP5GHz. Es una opcion de prueba si esta disponible, no una compra propuesta ni nueva arquitectura aceptada.
+
+Fuentes: https://www.intel.com/content/www/us/en/products/sku/130293/intel-wifi-6-ax201-gig/specifications.html ; https://wireless.docs.kernel.org/en/latest/en/users/drivers/iwlwifi.html ; https://networkmanager.dev/docs/api/1.44.4/nm-settings-nmcli.html (powersave2 deshabilita ahorro, previo a considerar ajustes reales del perfil).
+
+Hallazgos de codigo y propuestas aun NO implementadas:
+
+- La llamada BancoVision.procesar corre bajo banco.lock; extraer video y confirmar/crear identificadores ocurren en ese flujo. GET frame adquiere el mismo lock: puede esperar durante esos trabajos. Separar trabajo pesado/publicacion es una mejora candidata, con estados ocupados explicitos y pruebas de concurrencia. No atribuir esos picos automaticamente a Wi-Fi.
+- Android readTimeout5000ms puede dejar una carga de imagen en curso varios segundos. El buzon de ultimo frame evita acumular cuadros ya recibidos pero no interrumpe la transferencia TCP en curso. Evaluar descarte por antiguedad/presupuesto total del cuadro, diferenciando conexion inicial de regimen para evitar reconexiones perpetuas.
+- JPEG via base64 agrega aproximadamente un tercio de bytes frente al JPEG binario, mas JSON. Proponer JPEG binario/multipart con metadatos del MISMO frame_id, conservando seleccion atomica. No cambiar a MJPEG separado con cajas de otro instante ni migrar a WebRTC/UDP antes de medir necesidad.
+- Permitir calidad JPEG de visualizacion ajustable (referencia actual75) y comparar75 frente60 sin cambiar resolucion ni datos de reconocimiento. Galeria24 y videos de entrenamiento/evaluacion conservarian calidad de origen; no mezclar esta variable con resultados de identidad.
+- Comparar canal menos ocupado y ahorro de energia del enlace con configuracion registrada, despues de inspeccionar el perfil activo; no modificarlo automaticamente desde este codigo.
+
+Prioridad: medir picos y contexto; abordar bloqueo de publicacion si coincide con captura/confirmacion; si sube Carga mientras NUC sigue estable y hay reintentos Wi-Fi, probar condiciones de radio/menor carga de bytes. La medicion actual Carga no equivale a latencia captura-pantalla. No se instalaron modelos, alteraron motores ni cambiaron hotspot/firewall durante esta revision.
+
+## Medicion real del enlace aportada por operador
+
+2026-11-23, NUC hotspot Lumi, wlo1 tipoAP: canal1,2412MHz,20MHz. Cliente asociado22s; senal instantanea-36dBm, media-51dBm; txbitrate72.2Mbit/s; rxbitrate1Mbit/s; txbytes7521423, txpackets860, txretries2, txfailed0, rxdropmisc0. Se omite MAC de cliente.
+
+Interpretacion: banda2.4confirmada, senal favorable y muy pocas retransmisiones observadas en esta ventana. El contador TX desde NUC es la direccion relevante del video; RX1Mbit/s no representa la capacidad global de transferencia del video y puede corresponder a la ultima recepcion de un paquete lento. Las tasas de enlace no son rendimiento util de aplicacion. Aproximadamente2.7Mbit/s medios TX en22s si el intervalo de contadores coincide con tiempo de asociacion; no usarlo como medicion exacta de la carga JPEG ni de picos. No demuestra ausencia de interferencias intermitentes.
+
+Prioridad: medir Carga/NUC durante los picos y desacoplar trabajo pesado del candado de publicacion, antes de cambiar hardware/banda. Esta medicion no justifica por si sola migrar a5GHz ni reducir precision/resolucion de reconocimiento.
+
+## Iteracion0.8.2: retraso en vista normal, sin enrolamiento
+
+El operador aclara que los picos ocurren en vista normal y no probo enrolamiento: en ese ensayo se descarta el trabajo pesado de galeria como causa directa. Preparar ajuste de transporte manteniendo detector10FPS y controles restringidos.
+
+Implementacion prevista: reutilizar ControlWifiPower (baja latencia Android29+, alto rendimiento anteriores) solo mientras conectado y en primer plano; nuevo endpoint frame.jpg con JPEG binario y metadatos ASCII JSON en cabecera del MISMO cuadro; API JSON anterior conservada; app detecta404 y vuelve al formato previo si servidor no actualizado. Reducir espera de lectura de video frente a5s, dejando el tiempo de ordenes separado. Validar JPEG/metadata atomicos, conexion persistente, fallback y geometria. No prometer eliminar picos ni medir efecto radio con emulador. Fuente Android: https://developer.android.com/reference/android/net/wifi/WifiManager#WIFI_MODE_FULL_LOW_LATENCY y https://source.android.com/docs/core/connect/wifi-low-latency . GitHub y HU consultados antes de modificar.
+
+### Uso de0.8.2
+
+Instalar LUMI-Vision-0.8.2.apk sobre0.8.1. Reutiliza mismo paquete, firma, direccion y puerto. Actualizar servidor_movil.py en NUC y reiniciar con el mismo comando para obtener JPEG binario. La app comprueba primero GET /api/vision/frame.jpg: recibe image/jpeg y X-Lumi-Metadata (JSON ASCII, estado y frame_id del mismo JPEG). El servidor mantiene GET /api/vision/frame JSON/base64 para clientes anteriores. Si frame.jpg responde404, la app cambia una vez al formato anterior durante esa conexion.
+
+En la pantalla aparece JPEG binario o JPEG/JSON y Baja latencia solicitada / Alto rendimiento solicitado / no disponible. Solicitado no garantiza que firmware/hardware apliquen el modo: solo indica que Android acepto el WifiLock. Se libera al desconectar, mandar la app al fondo o destruir la actividad; no cambia ajustes globales ni banda/canal. Puede consumir mas energia durante uso activo; en esta pantalla la app ya mantiene pantalla encendida.
+
+El timeout de lectura de imagen pasa de5s a1.2s; conexion inicial sigue con2s, ordenes/revision con5s. Este es un timeout de lectura, no una garantia de latencia total ni un descarte completo por antiguedad. La conexion puede reintentarse si se atasca, sin reproducir ordenes. Todavia no se ha implementado un timestamp de sensor ni medido captura-pantalla real.
+
+El JPEG entregado es identico al que codifica el servidor para JSON, calidad75 y640x480: cambia envoltorio de transporte, no camara, modelo, datos guardados ni resolucion. El cuerpo JPEG binario es aproximadamente25por ciento menor que su representacion base64; cabeceras y metadatos tambien consumen bytes y deben contarse al medir trafico total. En el servidor actual se conserva base64 para compatibilidad y se decodifica al servir binario; no se presume ahorro de CPU del NUC. El movil evita decodificar base64 y elimina payload JPEG de la metadata retenida tras crear Bitmap.
+
+### Evidencia0.8.2
+
+Cuatro pruebas Python del banco pasaron: los bytes JPEG son iguales a los del endpoint anterior, metadata conserva frame_id/cajas y no incluye payload base64, y HTTP persistente/movimiento bloqueado se mantienen. APK compilado, firma v1/v2/v3 verificada, versionCode17.
+
+En emulador, JPEG binario mostro9.4FPS dibujados, carga7ms en captura de pantalla, cuerpo aproximado13.6KB frente18.7KB del JSON previo en datos sinteticos comparables (incluye diferencia de metadatos en envoltorio). Logs en regimen: cabeceras3-5ms, cuerpo0-5ms, JSON0-1ms redondeados. Pantalla indico Baja latencia solicitada; no mide el efecto radio de ese modo. Se comprobo tambien fallback automatico al volver a servidor simulado sin frame.jpg: imagen visible y formato JPEG/JSON. Camara, red y telefono reales pendientes; no se afirma que se hayan eliminado los picos del usuario.
