@@ -30,6 +30,9 @@ public class VisionActivity extends Activity {
     private Button connect, enroll, capture, confirm, repeat, cancel, follow, review;
     private LinearLayout enrollment;
     private SnapshotView video;
+    private NativeWebRtc rtc;
+    private volatile boolean rtcMode=true, selecting;
+    private Button videoMode;
     private String phase="desconectado";
     private final VideoFrameStats displayStats=new VideoFrameStats();
     private final LatestFrameSlot<VideoUpdate> pendingVideo=new LatestFrameSlot<>();
@@ -65,8 +68,15 @@ public class VisionActivity extends Activity {
         camera.setOrientation(1); camera.setPadding(dp(12),dp(8),dp(12),dp(8));
         root.addView(camera,new LinearLayout.LayoutParams(0,-1,1));
         label(camera,"LUMI · VISIÓN DEL NUC",18,0xffb7ead5);
+        rtcMode=getPreferences(0).getBoolean("webrtc",true);
+        rtc=new NativeWebRtc(this);
         video=new SnapshotView();
-        camera.addView(video,new LinearLayout.LayoutParams(-1,0,1));
+        FrameLayout viewport=new FrameLayout(this);
+        viewport.addView(rtc.view(),new FrameLayout.LayoutParams(-1,-1));
+        viewport.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->rtc.fit());
+        viewport.addView(video,new FrameLayout.LayoutParams(-1,-1));
+        camera.addView(viewport,new LinearLayout.LayoutParams(-1,0,1));
+        videoVisibility();
         status=label(camera,"Conecta el móvil al Wi-Fi del NUC",16,0xfff0faf6);
         detail=label(camera,"Movimiento restringido · solo visión",13,0xffb7ead5);
         notice=label(camera,"",14,0xfff4ce8c);
@@ -75,13 +85,20 @@ public class VisionActivity extends Activity {
         LinearLayout menu=new LinearLayout(this);
         menu.setOrientation(1); menu.setPadding(dp(12),dp(8),dp(12),dp(8));
         menu.setBackgroundColor(0xffeef6f2); scroll.addView(menu);
-        label(menu,"Laboratorio · v0.8.2",17,0xff112220);
+        label(menu,"Laboratorio · v0.9.0",17,0xff112220);
         button(menu,"Elegir Wi-Fi del NUC").setOnClickListener(v->{
             disconnect(); startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS));
         });
         connect=button(menu,"Conectar al NUC");
         connect.setOnClickListener(v->{if(connected) disconnect(); else connect();});
         button(menu,"Dirección del NUC").setOnClickListener(v->address());
+        videoMode=button(menu,rtcMode?"Vídeo: WebRTC":"Vídeo: JPEG");
+        videoMode.setOnClickListener(v->{
+            disconnect();rtcMode=!rtcMode;
+            getPreferences(0).edit().putBoolean("webrtc",rtcMode).apply();
+            videoMode.setText(rtcMode?"Vídeo: WebRTC":"Vídeo: JPEG");videoVisibility();
+            notice.setText("Pulsa Conectar para probar "+(rtcMode?"WebRTC":"JPEG"));
+        });
         enroll=button(menu,"Enrolar persona");
         enroll.setOnClickListener(v->{
             enrollmentOpen=!enrollmentOpen;
@@ -140,15 +157,16 @@ public class VisionActivity extends Activity {
     private void connect(){
         wifi=wifiNetwork();
         if(wifi==null){notice.setText("Primero conéctate al Wi-Fi del NUC desde Ajustes.");return;}
-        wifiPower.acquire(this);
+        if(!rtcMode)wifiPower.acquire(this);
         connected=true; long generation=++epoch;
         phase="conectando";connect.setText("Desconectar");notice.setText("Conectando a "+base);buttons();
         frames.execute(()->poll(generation));
     }
     private void disconnect(){
         wifiPower.release();
+        if(rtc!=null)rtc.stop();
         connected=false;epoch++;busy=false;reviewMode=false;reviewSeen=false;phase="desconectado";
-        if(video!=null)video.clear();
+        if(video!=null){video.clear();videoVisibility();}
         if(connect!=null){connect.setText("Conectar al NUC");status.setText("Sin conexión");buttons();}
     }
     private JSONObject request(String path,JSONObject body,Network network,String address)throws Exception{
@@ -156,7 +174,7 @@ public class VisionActivity extends Activity {
         if(network==null)throw new IOException("No hay red Wi-Fi seleccionada");
         HttpURLConnection c=(HttpURLConnection)network.openConnection(new URL(address+path));
         c.setConnectTimeout(2000);
-        c.setReadTimeout(path.startsWith("/api/vision/frame")?1200:5000);
+        c.setReadTimeout(path.equals("/api/webrtc/offer")?15000:path.startsWith("/api/vision/frame")?1200:5000);
         c.setUseCaches(false);
         boolean responseRead=false;
         try{
@@ -210,7 +228,8 @@ public class VisionActivity extends Activity {
             frameLoadMs=current.loadMs;
             videoFormat=current.snapshot.optString("_formato_video","JPEG/JSON");
             update(current.snapshot.optJSONObject("estado"));
-            if(!reviewMode)video.show(current.bitmap,current.snapshot);
+            if(!reviewMode && current.bitmap!=null)video.show(current.bitmap,current.snapshot);
+            videoVisibility();
         });
     }
     private void poll(long generation){
@@ -227,7 +246,16 @@ public class VisionActivity extends Activity {
                     lastWifiCheck=start;wifi=current;
                 }
                 if(current==null)throw new IOException("Wi-Fi desconectado");
-                // El frame ya contiene estado y contrato: un GET atomico por iteracion.
+                if(rtcMode && !selecting){
+                    JSONObject state=request("/api/estado",null,current,base);
+                    if(!state.optString("servidor").equals("lumi-vision-nuc-v1"))
+                        throw new IOException("Este destino no es el servidor de visión del NUC");
+                    JSONObject message=new JSONObject();message.put("estado",state);
+                    message.put("_formato_video","WebRTC VP8");
+                    deliver(new VideoUpdate(generation,SystemClock.elapsedRealtime()-start,message,null,null));
+                    Thread.sleep(500);continue;
+                }
+                // Imagen y recuadros del mismo instante para seleccionar sin desfase.
                 JSONObject frame;
                 try{frame=request(binary?"/api/vision/frame.jpg":"/api/vision/frame",null,current,base);}
                 catch(FrameRouteUnavailable error){
@@ -246,7 +274,6 @@ public class VisionActivity extends Activity {
                 deliver(new VideoUpdate(generation,load,frame,bitmap,null));
                 success=true;
             }catch(Exception error){
-                wifi=null;
                 deliver(new VideoUpdate(generation,0,null,null,
                     error.getMessage()!=null?error.getMessage():"No se pudo recibir la imagen"));
             }
@@ -257,17 +284,38 @@ public class VisionActivity extends Activity {
     private void update(JSONObject state){
         if(state==null)return;
         phase=state.optString("estado");
+        selecting=phase.equals("seleccionando")||phase.equals("seleccionado");
+        if(rtcMode && connected && state.optBoolean("webrtc") && rtc.needsRestart())startRtc();
         status.setText(phase+" · "+state.optString("mensaje"));
-        detail.setText(String.format(java.util.Locale.getDefault(),
-            "%s · NUC: %.1f FPS / %.0f ms · App: %s · Carga: %d ms\nMovimiento restringido · %s · %s",
+        if(rtcMode){
+            detail.setText(String.format(java.util.Locale.getDefault(),
+                "%s · NUC: %.1f FPS / %.0f ms · WebRTC: %.1f FPS recibidos\n%s · Movimiento restringido",
+                state.optString("metodo"),state.optDouble("fps"),state.optDouble("procesamiento_ms"),rtc.fps(),
+                state.optBoolean("webrtc")?rtc.state():"Reinicia el servidor con --webrtc"));
+        }else detail.setText(String.format(java.util.Locale.getDefault(),
+            "%s · NUC: %.1f FPS / %.0f ms · App: %.1f FPS · Carga: %d ms\nMovimiento restringido · JPEG",
             state.optString("metodo"),state.optDouble("fps"),state.optDouble("procesamiento_ms"),
-            reviewMode?"revisión":String.format(java.util.Locale.getDefault(),"%.1f FPS",displayStats.fps(SystemClock.elapsedRealtime())),frameLoadMs,videoFormat,wifiPower.status()));
+            displayStats.fps(SystemClock.elapsedRealtime()),frameLoadMs));
         notice.setText((phase.equals("preparando")||phase.equals("enrolando"))?
             "Gira despacio · "+(int)Math.ceil(state.optDouble("segundos_restantes"))+" s restantes":
             phase.equals("revision")?"Revisa identidad y vistas en TODOS los recortes antes de confirmar.":
             phase.equals("seleccionando")?"Toca el recuadro de la persona que quieres enrolar.":"");
         if(!phase.equals("revision")){reviewSeen=false;if(reviewMode){reviewMode=false;review.setText("Ver recortes");}}
-        buttons();
+        videoVisibility();buttons();
+    }
+    private void videoVisibility(){
+        if(rtc==null||video==null)return;
+        boolean live=rtcMode&&!selecting&&!reviewMode;
+        rtc.visible(live);video.setVisibility(live?View.GONE:View.VISIBLE);
+    }
+    private void startRtc(){
+        final Network network=wifi;final String address=base;
+        rtc.start(new NativeWebRtc.Signaling(){
+            public JSONObject offer(JSONObject body)throws Exception{return request("/api/webrtc/offer",body,network,address);}
+            public void close(String session)throws Exception{
+                JSONObject body=new JSONObject();body.put("sesion",session);request("/api/webrtc/cerrar",body,network,address);
+            }
+        });
     }
     private void buttons(){
         boolean ready=connected && !busy && !phase.equals("conectando") && !phase.equals("reconectando");
@@ -310,7 +358,7 @@ public class VisionActivity extends Activity {
         });
     }
     private void toggleReview(){
-        if(reviewMode){reviewMode=false;review.setText("Ver recortes");buttons();return;}
+        if(reviewMode){reviewMode=false;review.setText("Ver recortes");videoVisibility();buttons();return;}
         if(!connected||busy)return;
         busy=true;buttons();long generation=epoch;Network network=wifi;String address=base;
         commands.execute(()->{
@@ -318,13 +366,13 @@ public class VisionActivity extends Activity {
                 JSONObject image=request("/api/vision/revision",null,network,address);
                 Bitmap bitmap=decode(image);
                 ui.post(()->{if(generation!=epoch)return;busy=false;reviewMode=true;reviewSeen=true;
-                    video.show(bitmap,null);review.setText("Volver a cámara");buttons();});
+                    videoVisibility();video.show(bitmap,null);review.setText("Volver a cámara");buttons();});
             }catch(Exception error){ui.post(()->{if(generation!=epoch)return;busy=false;buttons();notice.setText(error.getMessage());});}
         });
     }
     @Override protected void onResume(){super.onResume();foreground=true;}
     @Override protected void onPause(){foreground=false;disconnect();super.onPause();}
-    @Override protected void onDestroy(){disconnect();frames.shutdownNow();commands.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){disconnect();frames.shutdownNow();commands.shutdownNow();rtc.release();super.onDestroy();}
 
     private class SnapshotView extends View {
         private Bitmap bitmap;

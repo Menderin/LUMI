@@ -64,3 +64,8 @@ Ver [minimo frente a mediana de tres distancias](docs/trabajo/experimento-agrega
 ## Video movil 0.8.1
 
 [Mejora de fluidez y mediciones](docs/trabajo/fluidez-video-movil.md): un GET por imagen, periodo100ms, HTTP persistente, entrega de ultimo cuadro y FPS reales dibujados. Actualizar app y reiniciar servidor actualizado para obtener mejora completa. Movimiento sigue restringido.
+
+
+## Video WebRTC nativo0.9.0
+
+[Transporte, arranque y prueba A/B](docs/trabajo/webrtc-movil-nuc.md): servidor de vision con --webrtc, app nativa VP8 y HTTP para estado/enrolamiento; UDP50000-50009 del hotspot. Comparacion explicita conJPEG. Camara unica y movimiento restringido. Validacion fisica NUC/telefono pendiente.

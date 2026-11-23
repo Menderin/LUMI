@@ -108,3 +108,8 @@ En el piloto visual, la recuperacion simulada continua tras perdida y reanuda co
 ## Banco de vision movil en NUC (2026-11-23)
 
 La app 0.8.0 selecciona una persona sobre video y controla enrolamiento en el NUC, que administra su Wi-Fi. Movimiento restringido tanto en app como en este servidor, sin conexion ESP/ROS de actuacion. Leer [contrato, arranque y verificacion](trabajo/enrolamiento-movil-nuc.md). La nueva entrada es python -m software.percepcion.servidor_movil, distinta del servidor de simulacion anterior.
+
+
+## Video WebRTC nativo0.9.0
+
+[Transporte, arranque y prueba A/B](trabajo/webrtc-movil-nuc.md): servidor de vision con --webrtc, app nativa VP8 y HTTP para estado/enrolamiento; UDP50000-50009 del hotspot. Comparacion explicita conJPEG. Camara unica y movimiento restringido. Validacion fisica NUC/telefono pendiente.

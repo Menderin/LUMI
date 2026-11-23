@@ -1,0 +1,4 @@
+-r requirements-openvino.txt
+aiortc==1.14.0
+aioice==0.14.0
+av==16.1.0

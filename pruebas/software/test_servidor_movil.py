@@ -127,6 +127,13 @@ class SeleccionMovil(unittest.TestCase):
                 finally:
                     conexion.close()
 
+                with urlopen(base+"/api/webrtc/estado") as response:
+                    self.assertFalse(json.load(response)["habilitado"])
+                with self.assertRaises(HTTPError) as unavailable:
+                    urlopen(Request(base+"/api/webrtc/offer",data=b'{}',headers={"Content-Type":"application/json"}))
+                self.assertEqual(unavailable.exception.code,503)
+                unavailable.exception.close()
+
                 with self.assertRaises(HTTPError) as error:
                     urlopen(Request(base+"/api/movimiento",data=b'{}',headers={"Content-Type":"application/json"}))
                 self.assertEqual(error.exception.code,403)

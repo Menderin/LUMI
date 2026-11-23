@@ -84,3 +84,22 @@ El JPEG entregado es identico al que codifica el servidor para JSON, calidad75 y
 Cuatro pruebas Python del banco pasaron: los bytes JPEG son iguales a los del endpoint anterior, metadata conserva frame_id/cajas y no incluye payload base64, y HTTP persistente/movimiento bloqueado se mantienen. APK compilado, firma v1/v2/v3 verificada, versionCode17.
 
 En emulador, JPEG binario mostro9.4FPS dibujados, carga7ms en captura de pantalla, cuerpo aproximado13.6KB frente18.7KB del JSON previo en datos sinteticos comparables (incluye diferencia de metadatos en envoltorio). Logs en regimen: cabeceras3-5ms, cuerpo0-5ms, JSON0-1ms redondeados. Pantalla indico Baja latencia solicitada; no mide el efecto radio de ese modo. Se comprobo tambien fallback automatico al volver a servidor simulado sin frame.jpg: imagen visible y formato JPEG/JSON. Camara, red y telefono reales pendientes; no se afirma que se hayan eliminado los picos del usuario.
+
+## Regresion fisica0.8.2 y alternativa propuesta
+
+Operador reporta picos peores de hasta2500ms en vista normal. La mejora sintetica no reprodujo el telefono/red reales; no considerar0.8.2 una mejora validada ni atribuir los picos a la banda. Se cambiaron simultaneamente modo Wi-Fi, envoltorio de imagen y timeout: la causa no queda aislada. Si2500ms corresponde a Carga, es tiempo de peticion/recepcion/decodificacion, no latencia captura-pantalla ni tiempo del detector. El timeout de lectura1200ms no es plazo total; conectarse tiene otro timeout, y lectura por tramos/pool/reconexion pueden acumular mas tiempo. La app invalida Network ante todo fallo, lo que tambien pierde reutilizacion y puede aumentar coste de reconectar. Hay que separar reconexion de red de fallo de un frame en una comparacion controlada.
+
+Evaluacion de siguiente transporte (propuesta, sin implementar):
+
+- WebRTC video local via MediaMTX/encoder: candidato principal para una solucion de video tiempo real con manejo de jitter/congestion y decodificacion de video en Android. No garantiza latencias concretas. Preferir transporte de medios UDP en LAN y colas acotadas; verificar encoder disponible y costeCPU en NUC. App seguiria nativa con receptor WebRTC, no Electron/webapp.
+- RTP/UDP con GStreamer: candidato de banco para controlar latencia de jitterbuffer y descartar tarde. Requiere integracion nativa Android, codec y recuperacion de perdidas; no enviar JPEG gigante en un datagramaUDP.
+- MJPEG continuo HTTP: migracion mas simple de JPEG por peticion a un flujo; conserva TCP y no elimina bloqueos por retransmisiones. No presentarlo como solucion garantizada a picos.
+
+Arquitectura de prueba propuesta: un solo productor de camara alimenta detector actual y encoder de visualizacion; no abrir Logitech desde dos procesos. Empezar640x480/10FPS sin audio, medir CPU y captura-pantalla con referencia visual independiente. Control de enrolamiento/estado permanece HTTP8080 y movimiento restringido. La seleccion de persona debe conservar imagen y cajas del mismo instante: para primer prototipo WebRTC, mostrar recuadros incrustados en el video y usar snapshot atomico al entrar en seleccion, o alinear metadatos con timestamps reales de video; no superponer cajas actuales sobre video retrasado. Mantener revision de24recortes y galeria fija.
+
+WebRTC local no requiere inferencia en Internet, pero cambia puertos de medios/senalizacion y hay que definir excepciones del firewall del NUC antes de probar. No recomendar abrir todo UDP ni desactivar firewall. Implementacion y eleccion definitiva pendientes: primero describir pipeline/codec/cliente concretos y prueba A/B en mismo telefono/NUC. Conservar0.8.1 como referencia de comportamiento; Android no permite instalar sin mas un APK con versionCode inferior sobre el actual, asi que una comparacion requiere un build de diagnostico con versionCode nuevo o un procedimiento explicito, no aconsejar downgrade directo.
+
+Fuentes primarias consultadas: https://mediamtx.org/docs/read/web-browsers ; https://mediamtx.org/docs/read/webrtc ; https://gstreamer.freedesktop.org/documentation/rtpmanager/rtpjitterbuffer.html . No se implemento ni verifico WebRTC/RTP en esta revision.
+
+
+La propuesta anterior queda implementada para probar en [WebRTC nativo0.9.0](webrtc-movil-nuc.md). Se eligio aiortc integrado en lugar de MediaMTX para compartir la captura existente. Mantener el reporte fisico de0.8.2 como regresion sin causa aislada.

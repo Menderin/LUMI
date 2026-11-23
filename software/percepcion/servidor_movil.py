@@ -62,6 +62,7 @@ class BancoVision:
         self.eventos = []
         self.objetivo_valido = False
         self.ultimo_frame_t = 0
+        self.webrtc = None
 
     def estado(self, ahora=None):
         ahora = time.monotonic() if ahora is None else ahora
@@ -74,7 +75,8 @@ class BancoVision:
                 "fps":round(self.fps,1),"procesamiento_ms":round(self.latencia_ms,1),
                 "error":self.error,"mensaje":self.error or e["mensaje"],
                 "revision_disponible":self.revision is not None,
-                "camara_activa":self.ultimo is not None and ahora-self.ultimo_frame_t < 2}
+                "camara_activa":self.ultimo is not None and ahora-self.ultimo_frame_t < 2,
+                "webrtc":self.webrtc is not None}
 
     def _limpiar(self):
         if self.video:
@@ -233,6 +235,8 @@ class BancoVision:
             "alto":frame.shape[0],"cajas":cajas,"seleccionado":seleccionado,
             "objetivo":candidato if siguiendo else None,"distancias":distancias,"motivo":motivo,
             "estado":self.estado(ahora)}
+        if self.webrtc is not None:
+            self.webrtc.publish(frame,cajas,seleccionado,candidato if siguiendo else None)
         return self.snapshot
 
     def ejecutar(self):
@@ -305,7 +309,9 @@ def manejador(banco):
 
         def do_GET(self):
             with banco.lock:
-                if self.path == "/api/estado":
+                if self.path == "/api/webrtc/estado":
+                    datos = banco.webrtc.status() if banco.webrtc else {"habilitado":False}
+                elif self.path == "/api/estado":
                     datos = banco.estado()
                 elif self.path in ("/api/vision/frame","/api/vision/frame.jpg"):
                     datos = banco.snapshot if banco.estado()["camara_activa"] else None
@@ -322,16 +328,24 @@ def manejador(banco):
                 self.responder(200 if datos else 503,datos or {"error":banco.error or "Preparando camara o revision"})
 
         def do_POST(self):
-            if self.path not in ("/api/enrolamiento","/api/vision/seleccionar"):
+            if self.path not in ("/api/enrolamiento","/api/vision/seleccionar","/api/webrtc/offer","/api/webrtc/cerrar"):
                 self.close_connection = True
                 return self.responder(403,{"error":"Movimiento restringido; este servidor es solo de vision"})
             try:
                 longitud = int(self.headers.get("Content-Length","0"))
-                if not 0 < longitud <= 4096:
+                limite = 131072 if self.path=="/api/webrtc/offer" else 4096
+                if not 0 < longitud <= limite:
                     raise ValueError("Solicitud invalida")
                 datos = json.loads(self.rfile.read(longitud))
                 if not isinstance(datos,dict):
                     raise ValueError("Se requiere objeto JSON")
+                if self.path.startswith("/api/webrtc/"):
+                    if banco.webrtc is None:
+                        return self.responder(503,{"error":"Reinicia servidor con --webrtc e instala requirements-webrtc.txt"})
+                    if self.path.endswith("offer"):
+                        return self.responder(200,banco.webrtc.offer(datos))
+                    banco.webrtc.close_peer(datos.get("sesion",""))
+                    return self.responder(200,{"ok":True})
                 if self.path.endswith("seleccionar"):
                     datos["accion"] = "seleccionar"
                 evento,respuesta = threading.Event(),{}
@@ -339,7 +353,7 @@ def manejador(banco):
                 if not evento.wait(4):
                     return self.responder(503,{"error":"Vision ocupada; revisa estado antes de reintentar"})
                 self.responder(200 if respuesta["ok"] else 409,respuesta)
-            except (ValueError,queue.Full) as error:
+            except (ValueError,RuntimeError,queue.Full) as error:
                 self.close_connection = True
                 self.responder(400,{"error":str(error)})
     return Handler
@@ -354,6 +368,7 @@ def main():
     parser.add_argument("--parametros",help="umbrales.json o auto")
     parser.add_argument("--umbral",type=float)
     parser.add_argument("--margen",type=float)
+    parser.add_argument("--webrtc",action="store_true",help="Video local VP8 por WebRTC/UDP50000-50009")
     parser.add_argument("--descargar-modelo",action="store_true")
     parser.add_argument("--descargar-cnn",action="store_true")
     args = parser.parse_args()
@@ -378,7 +393,18 @@ def main():
         carpeta = REPO/"datos/enrolamientos"/datetime.now().strftime("movil-%Y%m%d-%H%M%S-%f")
         carpeta.mkdir(parents=True)
         banco = BancoVision(args,carpeta)
-        server = ThreadingHTTPServer((args.host,args.puerto),manejador(banco))
+        if args.webrtc:
+            try:
+                from .video_webrtc import WebRTCService
+            except ImportError as error:
+                raise RuntimeError("Instala software/percepcion/requirements-webrtc.txt") from error
+            banco.webrtc = WebRTCService()
+        try:
+            server = ThreadingHTTPServer((args.host,args.puerto),manejador(banco))
+        except OSError:
+            if banco.webrtc is not None:
+                banco.webrtc.close()
+            raise
         server.daemon_threads = True
         hilo = threading.Thread(target=banco.ejecutar,daemon=True)
         hilo.start()
@@ -391,6 +417,8 @@ def main():
             banco.stop.set()
             server.server_close()
             hilo.join(timeout=10)
+            if banco.webrtc is not None:
+                banco.webrtc.close()
     except (ValueError,OSError,RuntimeError) as error:
         parser.exit(1,f"Error: {error}\n")
 

@@ -63,3 +63,8 @@ La app 0.8.0 selecciona una persona sobre video y controla enrolamiento en el NU
 ## Video movil 0.8.2
 
 [Modo Wi-Fi de baja latencia y JPEG binario](../../docs/trabajo/fluidez-video-movil.md): actualizar APK y servidor para reducir envoltorio de imagen, conservando la API anterior como fallback. Movimiento sigue restringido. Ver los indicadores JPEG binario/JPEG-JSON y Baja latencia solicitada.
+
+
+## Video WebRTC nativo0.9.0
+
+[Transporte, arranque y prueba A/B](../../docs/trabajo/webrtc-movil-nuc.md): servidor de vision con --webrtc, app nativa VP8 y HTTP para estado/enrolamiento; UDP50000-50009 del hotspot. Comparacion explicita conJPEG. Camara unica y movimiento restringido. Validacion fisica NUC/telefono pendiente.
